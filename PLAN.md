@@ -1,208 +1,234 @@
-# Rhythm Practice App — Implementation Plan
+# Rhythm Section — Requirements & Design Reference
 
-## Context
+Browser-based rhythm practice app. A generated rhythm in 4/4 is shown in bass-clef notation and looped against a metronome. The musician reads along; optional audio playback of the rhythm is available for reference. Configurations (and the rhythm seed) are shareable via URL so a teacher can send an exercise to a student on another device.
 
-Greenfield project in `/workspace` (currently just a devcontainer, empty `RhythmSection.iml`, and a hand-drawn `UI mockup.jpeg`). The user wants a browser-based rhythm practice tool. Core value: generate a random rhythm in 4/4 constrained to selected note lengths, display it in standard notation, and let the user loop it against a metronome with an optional audio playback for reference.
+This document is the living reference for the app's requirements. Keep it in sync whenever behaviour changes.
 
-Primary outcome: a single-page web app that musicians can use to practice reading and internalising rhythms, with shareable presets via URL so a teacher can send an exercise to a student on another device.
+---
 
-## Stack & tooling
+## 1. Stack & infrastructure
 
-- **SvelteKit + Svelte 5** (runes) with `@sveltejs/adapter-static` — deploys as a static site, no backend needed.
-- **Vite** (built into SvelteKit) — dev server and preview bound to port **8473**.
-- **GitHub Actions** workflow for automatic build + deploy to GitHub Pages on push to `main`.
-- **TypeScript** throughout.
-- **VexFlow** (`vexflow` npm) for staff notation + beaming + tuplets + ties.
-- **spessasynth_lib** + General User GS SoundFont (lazy-loaded on first audio enable) for drum / fretless bass / metronome sounds.
-- **Vitest** for unit tests, **Playwright** for one e2e smoke test. Per user's dev-practices memory: TDD, write failing test first.
-- **ESLint + Prettier** (SvelteKit defaults); no Java tooling (Spotless) since this is JS/TS.
+- **SvelteKit 2 + Svelte 5 runes**, TypeScript end to end.
+- **Vite** dev/preview on port **8473**, binding to `0.0.0.0` so the devcontainer port mapping reaches the browser.
+- **@sveltejs/adapter-static**. SSR and prerender are **disabled** for the main page — it renders once client-side so the first paint reflects localStorage. See `src/routes/+page.ts`.
+- **GitHub Actions** workflow at `.github/workflows/deploy.yml` builds on push to `main` with `BASE_PATH=/$REPO` and deploys to GitHub Pages.
+- **Vitest** for unit tests. Playwright smoke test is on the backlog but not yet implemented.
+- **spessasynth_processor.min.js** is copied into `static/` so the AudioWorklet module is served at runtime.
 
-## Feature scope (MVP)
+### Dev practices
 
-From answered questions:
+- TDD: red → green → refactor, write the failing test first.
+- Small commits, each self-contained and green. Feature branch off `main`.
+- Commit messages focus on the *why*. **No `Co-Authored-By` trailer.**
+- `npm run check` and `npm test` both clean before every commit.
 
-| Area | Decision |
-|------|----------|
-| Time signature | Fixed 4/4 |
-| Bars | 1 or 2 |
-| Note lengths | whole, half, quarter, eighth, eighth-triplet, sixteenth + dotted half/quarter/eighth |
-| Ties | Yes — notes may cross beat boundaries, rendered as tied pairs |
-| Rests | Yes, interleaved with notes |
-| Tuplet mixing | Per-beat: each beat is either binary or triplet, never mixed within a beat |
-| Metronome | on/off, division (half/quarter/eighth/triplet/sixteenth), emphasize-first-beat toggle |
-| Rhythm playback | Default OFF; user toggles on. User picks drum OR fretless bass. |
-| Count-in | One bar of metronome before playback start |
-| Highlight | Currently playing note highlighted in staff |
-| Persistence | localStorage for all settings |
-| Share | URL hash encodes settings + seed (deterministic regen on other device) |
-| Transport | Play / Pause / Regenerate |
+---
 
-## Directory layout
+## 2. Feature inventory
 
-```
-/workspace/
-├── package.json
-├── svelte.config.js
-├── vite.config.ts
-├── tsconfig.json
-├── playwright.config.ts
-├── .github/
-│   └── workflows/
-│       └── deploy.yml        # build + deploy to GitHub Pages on push to main
-├── static/
-│   └── soundfont/            # GeneralUserGS (lazy fetch, not bundled into JS)
-├── src/
-│   ├── app.html
-│   ├── routes/+page.svelte   # single page
-│   ├── lib/
-│   │   ├── rhythm/
-│   │   │   ├── types.ts      # NoteLength, RhythmEvent, Bar
-│   │   │   ├── generator.ts  # seeded generator
-│   │   │   └── generator.test.ts
-│   │   ├── audio/
-│   │   │   ├── scheduler.ts  # Chris Wilson look-ahead scheduler
-│   │   │   ├── synth.ts      # spessasynth_lib wrapper, lazy SF2 load
-│   │   │   ├── metronome.ts  # click event builder
-│   │   │   └── scheduler.test.ts
-│   │   ├── notation/
-│   │   │   └── render.ts     # VexFlow render + node-ref map for highlight
-│   │   ├── state/
-│   │   │   ├── settings.svelte.ts  # Svelte 5 rune state + localStorage sync
-│   │   │   └── share.ts            # encode/decode URL hash
-│   │   ├── rng/
-│   │   │   └── seeded.ts     # mulberry32 PRNG
-│   │   └── components/
-│   │       ├── Transport.svelte
-│   │       ├── SettingsPanel.svelte
-│   │       ├── NoteLengthPicker.svelte
-│   │       └── Staff.svelte  # mounts VexFlow, drives highlight
-└── tests/
-    └── smoke.spec.ts         # Playwright
-```
+### 2.1 Rhythm generation (`src/lib/rhythm/`)
 
-## Key design points
+- Fixed **4/4** time signature.
+- **1 or 2 bars** chosen by the user.
+- User-selectable note lengths: whole, half, quarter, 8th, 16th, 8th triplet, dotted half / quarter / eighth.
+- **Include rests** toggle (≈20 % of events become rests when enabled).
+- **Include ties** toggle.
+- **Seeded deterministic** output via `mulberry32(seed)`. Regenerate = new seed.
+- Triplets and binary never mix **within one beat**. Per-beat choice: triplet if allowed; 30 % weight when both binary and triplet are allowed.
+- Generator picks durations only from the user's allowed set. A `canFill` DP table guarantees every pick leaves a remainder that the allowed set can tile — no `forceFit` fallback to sixteenths.
+- With **ties off**, picks are capped at the current beat's remaining slots, so no event ever crosses a beat boundary.
+- With **ties on**, the generator uses a chain-length cap (see §2.2).
+- Long notes that cross beat boundaries are split into per-beat pieces by `splitAtBeatBoundaries` in integer 1/12-of-a-beat units (no floating-point drift across triplets).
 
-### 1. Rhythm generator (`src/lib/rhythm/generator.ts`)
+### 2.2 Tie chain cap
 
-Input:
-```ts
-{ bars: 1|2, allowedLengths: NoteLength[], allowRests: true, seed: number }
-```
+- A "tied chain" = consecutive events joined by ties (chain length = notes, ties = notes − 1).
+- Hard cap: chain length ≤ **3** (at most 2 sequential ties).
+- Distribution target: **95 %** of chains are length 2 (one tie), ≤ **5 %** length 3.
+- Enforced at pick time: each candidate duration is rejected if placing it would span more beats than the current roll allows.
+- Ties come **only** from `splitAtBeatBoundaries`. There is no random tie pass.
 
-Algorithm (per beat, 4 beats × `bars`):
-1. Pick beat type based on user's allowed lengths: **triplet** if only triplet-8th is selected for this beat slot, **binary** otherwise. If both triplet and binary lengths are allowed, weight 30/70.
-2. Fill the beat:
-   - **Binary beat** = 4 sixteenth-slots. Choose partitions from allowed durations that sum to 4 slots (e.g. `[4]=quarter`, `[2,2]=two 8ths`, `[3,1]=dotted-8th+16th`, `[1,1,1,1]=four 16ths`, `[2,1,1]`, etc.). Sample uniformly among legal partitions.
-   - **Triplet beat** = 3 triplet-8th slots; always three triplet-8ths (or rests).
-3. After filling beats, with configurable probability (hard-coded ~20% for MVP) convert some note events to rests.
-4. **Tie pass**: with ~15% probability merge two adjacent notes (if same position modulo binary/triplet) into a single longer tied note. Renderer inserts the tie.
-5. Notes longer than one beat (half, whole, dotted) consume multiple consecutive binary beats — chosen first at the bar-level partition step.
+### 2.3 Notation (`src/lib/notation/render.ts`, VexFlow 5)
 
-Deterministic: seeded mulberry32 PRNG. Same seed + settings ⇒ same bar.
+- **Bass clef**, time signature on the first stave of each row.
+- All rhythm notes are pitched on **A1** (key `a/2` on VexFlow's bass clef = bottom space).
+- Every beat is visually self-contained — notes that cross beat boundaries are rendered as tied pieces.
+- **Beams flush at absolute beat boundaries.** Beams are built a beat at a time using the absolute unit position, so a beat that starts with a rest doesn't drag the following beam group off the grid. `Beam.generateBeams` still gets to place partial secondary beams for mixed durations (dotted-8 + 16).
+- **Triplets** render as a 3-note beam group with a "3" tuplet bracket.
+- **Dotted notes** get an explicit dot via `Dot.buildAndAttach`.
+- **Ties** are drawn with `StaveTie`. Ties that cross rows (when 2 bars stack vertically) render as **two half-ties** — one trailing off the right of row 1, one leading into the left of row 2 — instead of a diagonal line.
+- Beams + tuplets are constructed **before** `voice.draw()`. Otherwise notes render with their flags still visible and each note has both a flag *and* a beam.
 
-### 2. Audio scheduler (`src/lib/audio/scheduler.ts`)
+### 2.4 Layout (responsive)
 
-Chris Wilson look-ahead pattern (well-known reference: `https://web.dev/articles/audio-scheduling`):
-- `setInterval(25ms)` runs `scheduleAheadTime = 100ms` of events in advance into a queue.
-- Each event has an `audioContext.currentTime + offset` stamp.
-- For each scheduled event:
-  - **Metronome click** → trigger woodblock/clave sample via SpessaSynth.
-  - **Rhythm hit** (if rhythm audio on) → trigger drum or bass note.
-  - Append to `ui-events` queue (tagged with rhythm-event index) for rAF highlight loop to consume.
-- **Highlight loop**: `requestAnimationFrame` reads `audioContext.currentTime`, pops ui-events whose time ≤ now, sets `currentEventIndex` state → `Staff.svelte` toggles CSS class on VexFlow node.
-- **Pause** = stop the scheduler tick, keep `currentEventIndex`, save elapsed. **Resume** re-seeds start time.
-- **Count-in** = one bar of metronome-only clicks inserted before the rhythm timeline.
+- The `Staff` component observes its container with `ResizeObserver` and passes the available width into `renderRhythm`.
+- On **wide** viewports, bars render side-by-side.
+- **Below ~520 px** and with 2 bars, each bar renders on its **own row** with its own clef + time signature.
+- The renderer scales each bar proportionally if the row's natural width exceeds the budget (with a floor so notes stay legible).
 
-### 3. SpessaSynth integration (`src/lib/audio/synth.ts`)
+### 2.5 Playback
 
-- Lazy-init on first user click of Play or metronome-on.
-- Fetch `GeneralUser GS.sf3` from `static/soundfont/`, pass to worklet.
-- Channels:
-  - Ch 9 (GM drums): standard kit — kick (36) for rhythm-drum, woodblock (76) for metronome sub-beat, claves (75) for downbeat accent.
-  - Ch 0: fretless bass (GM patch 35), fixed pitch E2 (40) for rhythm-bass mode.
-- User picks rhythm instrument: drum (kick) vs bass (E2). Metronome always uses woodblock/clave.
+- **BPM snapping**: only the classic Maelzel notches 40–208. The BPM control is a − / value / + stepper; typed/shared values that land off-notch are snapped on load.
+- **Play / Pause**, **Regenerate** (new seed), **Loop** (seamless restart), **Copy share link**.
+- **Count-in** toggle adds one bar of metronome clicks before the rhythm starts (count-in applies only to the first cycle when looping).
+- **Loop restart is anchored to the exact cycle end** (`startTime + bars × secPerBar`), not to the last scheduled event's start time, so tempo never rushes between repetitions.
+- **Settings apply immediately during playback.** An effect watches the playback-affecting fields; any change tears down the current scheduler and starts a new one in place.
+- **Space bar** toggles play/pause when focus is not in an input.
+- **Keeps the screen awake** while playing via the Screen Wake Lock API (re-acquires when the tab becomes visible again). Unsupported browsers silently no-op.
 
-### 4. Notation (`src/lib/notation/render.ts`)
+### 2.6 Metronome
 
-- VexFlow `EasyScore` for construction; for triplets use `Tuplet`; for ties use `StaveTie`.
-- Expose a `Map<rhythmEventIndex, SVGElement>` so the highlight loop can find the node to re-class. VexFlow `StaveNote.getAttribute('el')` (or `tickable.getSVGElement()` in 5.x) gives the group element.
-- Rerender only on regenerate or settings change — highlighting is pure CSS class toggling, no rerender.
+- On/off toggle.
+- **Divisions**: half, quarter, 8th, triplet, 16th (shown as note-icon buttons).
+- **Emphasize first beat** toggle; downbeat uses claves / higher oscillator blip, other on-beats use woodblock / mid blip, sub-beats are quieter.
 
-### 5. State, persistence, share (`src/lib/state/`)
+### 2.7 Rhythm audio
 
-- `settings.svelte.ts` exposes a single `$state` object. An `$effect` serialises to `localStorage` under key `rhythm-section:v1`.
-- On load: read `window.location.hash` first (share takes precedence), else localStorage, else defaults.
-- `share.ts`: `encode(settings) → base64url(JSON.stringify(settings))` written to `location.hash`; `decode()` reverse. Seed stored as a plain integer.
-- Copy-share button writes `window.location.href` to clipboard.
+- Default **off**; user toggles on per session (persisted).
+- **Instrument**: drum (kick) *or* bass (fretless bass at A1).
+- When the user loads a `.sf2` / `.sf3` / `.dls` file, the Player swaps from the oscillator synth to a SpessaSynth `WorkletSynthesizer`:
+  - Drum = GM kick drum (ch 9, note 36), metronome uses woodblock (76) / claves (75) on the same drum channel.
+  - Bass = GM fretless bass (ch 0, program 35), pitched MIDI 33 (A1).
+- With **no** SoundFont loaded, the oscillator fallback is used:
+  - Kick = sine sweep 180→60 Hz *plus* a bandpassed noise transient around 1.5 kHz so it remains audible on phone speakers.
+  - Bass = sawtooth at 55 Hz (A1) layered with 110 Hz second harmonic, low-passed — again so phone speakers can actually produce it.
+  - Click = square oscillator blip with different pitches per emphasis.
+- Rhythm hits are scheduled **only on the first note of each tied group** (prev tied → skip). Audible duration of a bass note is the sum of the tied group.
 
-### 6. UI layout (matches mockup)
+### 2.8 Scheduler (`src/lib/audio/scheduler.ts`)
+
+- Chris Wilson look-ahead pattern: `setInterval(25 ms)` schedules events 100 ms ahead.
+- `buildEventList` is a **pure** function: `{ metronome clicks, rhythm hits, highlight markers }` sorted by time. Pure → easy to test, no mocks needed.
+- Highlight dispatch is a **requestAnimationFrame loop** that reads `ctx.currentTime` directly and picks the last highlight whose time ≤ now. Never uses `setTimeout` for highlight timing (would drift away from the audio clock).
+
+### 2.9 State & actions (`src/lib/state/`)
+
+- `appState` is a class with `$state` fields exported as a module singleton. One source of truth: settings, isPlaying, activeIndex, soundFontStatus, soundFontName. `rhythm` is `$derived` from settings.
+- Every user intent is a named function in `actions.svelte.ts`. Components only read `appState` and call actions.
+- `Player` owns AudioContext + Synth + Scheduler + WakeLock. Stateless w.r.t. settings: `run(inputs)` always tears down any existing scheduler and starts fresh.
+- Settings are persisted to `localStorage` under `rhythm-section:v1`. Loads are **merged with `DEFAULT_SETTINGS`** so a payload from an older schema (missing e.g. `rhythmAudio`, `loop`) fills in defaults instead of silently turning features off.
+
+### 2.10 Share URL
+
+- Format: `#s=<base64url(JSON(SharedState))>`.
+- Encodes every setting + the rhythm seed, so the recipient sees the exact same exercise.
+- Decode is shape-validated; missing `rhythmAudio` / `loop` default to `false` / `true`.
+- Copy-link button writes the full URL (with hash) to the clipboard.
+
+### 2.11 Mobile UX
+
+- Viewport meta: `viewport-fit=cover` and safe-area insets respected in CSS.
+- PWA-capable meta tags (`theme-color`, `apple-mobile-web-app-capable`).
+- **44 px** minimum tap-target on every interactive control. `touch-action: manipulation` and no tap-highlight flash.
+- Transport stacks vertically: Play, then Regenerate + Loop, then BPM + Bars, then Copy link. Each row uses the full width.
+- Selected buttons inside `.group` keep the bright gradient background (scoped `aria-pressed` override, because Svelte's style scoping otherwise wins over the global pressed rule).
+- Note-length picker and division buttons are icon-only (SVG via `NoteIcon`).
+
+---
+
+## 3. Module map
 
 ```
-┌─ Transport bar ─────────────────────────────────────────┐
-│  [Play/Pause]  BPM [120▲▼]   Bars [1|2]  [Regenerate]   │
-├─ Rhythm ────────────────────────────────────────────────┤
-│  Allowed notes: [○][𝅗𝅥][♩][♪][triplet][♬]+dotted   Ties[✓]│
-│  Rhythm audio: [off|drum|bass]                          │
-├─ Staff (VexFlow) ───────────────────────────────────────┤
-│           [ generated bar(s), highlighted note ]        │
-├─ Metronome ─────────────────────────────────────────────┤
-│  [on/off]  Division [𝅗𝅥|♩|♪|triplet|♬]  Emphasize 1st [✓]│
-│  Count-in [✓]                                           │
-├─ Share ─────────────────────────────────────────────────┤
-│  [Copy share link]                                      │
-└─────────────────────────────────────────────────────────┘
+src/
+├── app.css                            global tokens + button/input defaults
+├── app.html                           viewport / PWA meta
+├── routes/
+│   ├── +layout.svelte                 imports app.css
+│   ├── +page.ts                       ssr = false; prerender = false
+│   └── +page.svelte                   view + one effect that calls
+│                                      restartIfPlaying on state change
+├── lib/
+│   ├── rhythm/
+│   │   ├── types.ts                   NoteLength, RhythmEvent, ...
+│   │   ├── generator.ts               seeded generator + splitAtBeatBoundaries
+│   │   └── generator.test.ts
+│   ├── rng/
+│   │   ├── seeded.ts                  mulberry32 + randomSeed
+│   │   └── seeded.test.ts
+│   ├── notation/
+│   │   └── render.ts                  VexFlow renderer + per-beat beaming +
+│   │                                  cross-row half-ties + ResizeObserver fit
+│   ├── audio/
+│   │   ├── events.ts                  pure buildEventList
+│   │   ├── events.test.ts
+│   │   ├── scheduler.ts               look-ahead scheduler + rAF highlight
+│   │   ├── synth.ts                   oscillator fallback Synth
+│   │   ├── soundfont-synth.ts         SpessaSynth-backed Synth
+│   │   ├── player.ts                  Player: ctx + synth + scheduler + wake
+│   │   ├── wake-lock.ts               Screen Wake Lock API wrapper
+│   │   ├── bpm.ts                     Maelzel table + snap / step
+│   │   └── bpm.test.ts
+│   ├── state/
+│   │   ├── settings.ts                DEFAULT_SETTINGS + load/save
+│   │   ├── settings.svelte.ts         readInitialSettings / persist
+│   │   ├── share.ts                   base64url codec + shape validation
+│   │   ├── share.test.ts
+│   │   ├── app-state.svelte.ts        class with $state fields (singleton)
+│   │   └── actions.svelte.ts          every user intent; owns the Player
+│   └── components/
+│       ├── Staff.svelte               mounts VexFlow + ResizeObserver
+│       ├── NoteIcon.svelte            centered SVG for each note length
+│       └── NoteLengthPicker.svelte
+└── static/
+    ├── soundfont/                     (not committed; users upload sf2/sf3)
+    └── spessasynth_processor.min.js   AudioWorklet processor copied from lib
 ```
 
-## Implementation order (TDD, small commits)
+---
 
-Branch: create `feat/rhythm-app` off `main`. Commit after each numbered step below — each commit must leave the tree green (tests pass, app builds). Keep commits small: if a step grows, split it.
+## 4. Invariants worth tests
 
-1. **Scaffold** — `npm create svelte@latest`, static adapter, TS, Vitest, Playwright. Configure Vite to serve on **port 8473** (`server.port` and `preview.port` in `vite.config.ts`). Commit.
-   1a. **GitHub Actions: build + deploy to Pages** — `.github/workflows/deploy.yml` using `actions/configure-pages`, `actions/upload-pages-artifact`, `actions/deploy-pages` on push to `main`. Configure SvelteKit `adapter-static` with `paths.base` derived from repo name (or `BASE_PATH` env set in the workflow) so asset URLs work under `username.github.io/RhythmSection/`. Commit.
-2. **Types + seeded RNG** — `rhythm/types.ts`, `rng/seeded.ts` + tests. Commit.
-3. **Generator (binary only)** — tests for partition coverage + seed determinism, then impl. Commit.
-4. **Generator: add triplet beats, rests, ties**. Commit.
-5. **URL encode/decode** — round-trip tests, then impl. Commit.
-6. **Settings store + localStorage** — light test of rune state. Commit.
-7. **VexFlow render + highlight hooks** — render snapshot test (compare to expected SVG structure for a known seed), no audio yet. Commit.
-8. **Web Audio scheduler (metronome only)** — unit-test the event-list builder (pure function); manual browser test for timing. Commit.
-9. **SpessaSynth wrapper + soundfont lazy load**. Commit.
-10. **Rhythm playback (drum / bass select)**. Commit.
-11. **Count-in, pause/resume, regenerate**. Commit.
-12. **UI polish: layout per mockup, responsive, keyboard (space = play/pause)**. Commit.
-13. **Playwright smoke test**: load page, click play, verify highlight advances, copy share link, open with hash in new page and confirm same rhythm renders. Commit.
+These are covered today; if any regresses, the spec broke:
 
-## Critical files to create
+- **RNG** is deterministic per seed; returns values in [0, 1).
+- **Generator**
+  - Produces exactly `bars × 4` beats of content.
+  - Never emits a length the user didn't select.
+  - Respects allowed-set fidelity even under awkward partitions (quarter + 16th only, etc.).
+  - With `allowTies=false`, no event ever crosses a beat boundary and no chain exists.
+  - With `allowTies=true`, no chain exceeds 3 events and the length-3 fraction stays well under the 5 % ceiling across many seeds.
+  - Emits triplets only in exact groups of 3 per beat.
+- **Share codec** round-trips, rejects malformed input, URL-safe charset.
+- **Settings** load merges with defaults; hash takes precedence over localStorage; invalid JSON falls back to defaults.
+- **Audio event list** — correct click count per division, correct emphasis tagging, count-in shifts rhythm/highlights without skipping metronome, drum hits only once per tied group, highlight event exists for every rhythm event.
+- **BPM** snaps to a Maelzel notch; step up/down clamps at 40 / 208.
 
-- `src/lib/rhythm/generator.ts` — hardest correctness problem; TDD here is essential.
-- `src/lib/audio/scheduler.ts` — hardest timing problem; keep event list computation pure and testable.
-- `src/lib/notation/render.ts` — VexFlow API boundary; most likely source of rendering bugs.
-- `src/routes/+page.svelte` — only route.
+---
 
-## Reused libraries / utilities
+## 5. Extending the app
 
-- `vexflow` — notation.
-- `spessasynth_lib` + `spessasynth_core` — synth.
-- GeneralUser GS SoundFont (CC BY) — audio bank, hosted under `static/`.
-- `mulberry32` PRNG — tiny inline function, no dependency.
+Before adding a feature, check:
 
-## Verification
+1. Does it fit the existing **settings → actions → Player** flow, or does it need new state?
+2. Does it need to **survive reload**? If yes, it goes in `Settings` (with a default) — remember `loadFromStorage` merges with defaults, so existing users auto-migrate.
+3. Does it need to **travel in a share link**? If yes, add it to `SharedState` and `isSharedState` validation, plus a default for old payloads in `decodeShare`.
+4. Does it affect **playback**? Add the field to the dependency list in the page's `restartIfPlaying` effect.
+5. Does it change **visual notation** or audio timing? Write the test first (`generator.test.ts` or `events.test.ts`) before touching the renderer / scheduler.
+6. Mobile: does it add a control? Target **44 px** minimum and verify the transport still stacks cleanly under 520 px.
 
-- **Unit**: `npm run test` — generator is deterministic for fixed seeds; URL round-trips; scheduler builds correct event list for a known rhythm.
-- **Manual**:
-  1. `npm run dev`, open browser at `http://localhost:8473`.
-  2. Set BPM 120, 1 bar, enable eighth + sixteenth + triplet.
-  3. Regenerate a few times — check notation renders and beams cleanly.
-  4. Metronome on, division = quarter, emphasize first beat — listen for accent on beat 1.
-  5. Rhythm audio on → drum → hear kick on each hit; switch to bass → hear E2 with note length.
-  6. Click play with count-in on — hear one bar of clicks before highlight starts moving.
-  7. Pause mid-bar → resumes from same beat.
-  8. Copy share link → open in private window → same settings + same rhythm.
-  9. Reload without hash → last settings restored from localStorage.
-- **E2E**: Playwright smoke test automates steps 1, 7, 8.
+---
 
-## Open (deferable) items
+## 6. Known deferred items
 
-- Drum-only vs drum+bass layered playback: MVP lets user pick one; layering can come later if desired.
-- Mobile layout details: design is single-column so it should work on narrow screens, but will verify on a real phone and adjust as needed.
-- Additional time signatures, custom note-length mixes, saved presets list — post-MVP.
+- Playwright e2e smoke test (step 13 of the original plan).
+- A built-in / bundled SoundFont — currently users upload their own because we don't ship a 30 MB General MIDI bank.
+- True pause/resume from mid-bar position (today Pause == Stop; Play restarts from the top of the cycle).
+
+---
+
+## 7. Verification checklist (manual)
+
+On every non-trivial change:
+
+1. `npm run dev` → open `http://localhost:8473/` (or the device's network URL).
+2. Unit tests: `npm test` — must pass.
+3. Type-check: `npm run check` — must be clean.
+4. Build: `npm run build` — static output under `build/`.
+5. In the browser:
+   - Regenerate several times at 1 bar and 2 bars; notation stays clean and beats are visually separated.
+   - Toggle every setting during playback and confirm the loop restarts cleanly at the correct tempo.
+   - Set BPM via steppers, confirm only Maelzel notches appear.
+   - Load a `.sf3` SoundFont; rhythm audio switches to sampled drums / bass.
+   - Copy share link, paste in a private window; the same rhythm appears.
+   - Reload without a hash; previous session's settings load without a visible flash.
+   - On a phone-width viewport or real phone: page never scrolls horizontally, transport buttons are all tappable, 2-bar view stacks and shows half-ties at the row edges, screen stays awake while playing.
