@@ -2,6 +2,7 @@ import {
 	Beam,
 	Dot,
 	Formatter,
+	Fraction,
 	Renderer,
 	Stave,
 	StaveNote,
@@ -179,29 +180,47 @@ function isBeamable(e: RhythmEvent): boolean {
 	);
 }
 
+/**
+ * Split the bar into contiguous runs of beamable notes of the same kind, then
+ * let VexFlow auto-beam each run:
+ * - Binary runs use generateBeams with beat grouping so mixed note lengths
+ *   (e.g. dotted-8th + 16th) get a full primary beam and a correct partial
+ *   secondary beam.
+ * - Triplet runs are grouped into consecutive triplet-beats (3 notes each).
+ */
 function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
 	const beams: Beam[] = [];
-	let group: StaveNote[] = [];
-	let groupKind: 'binary' | 'triplet' | null = null;
-	let positionUnits = 0;
+	let run: { kind: 'binary' | 'triplet'; notes: StaveNote[] } | null = null;
 
 	const flush = () => {
-		if (group.length >= 2) beams.push(new Beam(group));
-		group = [];
-		groupKind = null;
+		if (!run) return;
+		if (run.kind === 'triplet') {
+			for (let j = 0; j < run.notes.length; j += 3) {
+				const chunk = run.notes.slice(j, j + 3);
+				if (chunk.length >= 2) beams.push(new Beam(chunk));
+			}
+		} else {
+			beams.push(
+				...Beam.generateBeams(run.notes, {
+					groups: [new Fraction(1, 4)],
+					beamRests: false
+				})
+			);
+		}
+		run = null;
 	};
 
 	for (let i = 0; i < events.length; i++) {
 		const e = events[i];
-		const onBeatBoundary = positionUnits % UNITS_PER_BEAT === 0;
 		if (!isBeamable(e)) {
 			flush();
-		} else {
-			if (e.kind !== groupKind || onBeatBoundary) flush();
-			group.push(notes[i]);
-			groupKind = e.kind;
+			continue;
 		}
-		positionUnits += UNITS[e.length];
+		if (!run || run.kind !== e.kind) {
+			flush();
+			run = { kind: e.kind, notes: [] };
+		}
+		run.notes.push(notes[i]);
 	}
 	flush();
 	return beams;
