@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Staff from '$lib/components/Staff.svelte';
+	import NoteIcon from '$lib/components/NoteIcon.svelte';
 	import NoteLengthPicker from '$lib/components/NoteLengthPicker.svelte';
 	import { generateRhythm } from '$lib/rhythm/generator';
 	import { persist, readInitialSettings } from '$lib/state/settings.svelte';
@@ -12,24 +13,24 @@
 	import type { NoteLength, MetronomeDivision } from '$lib/rhythm/types';
 	import { browser } from '$app/environment';
 
-	const NOTE_OPTIONS: { value: NoteLength; glyph: string; label: string }[] = [
-		{ value: 'whole', glyph: '𝅝', label: 'whole' },
-		{ value: 'half', glyph: '𝅗𝅥', label: 'half' },
-		{ value: 'quarter', glyph: '♩', label: 'quarter' },
-		{ value: 'eighth', glyph: '♪', label: '8th' },
-		{ value: 'sixteenth', glyph: '𝅘𝅥𝅯', label: '16th' },
-		{ value: 'eighth-triplet', glyph: '♪³', label: 'triplet' },
-		{ value: 'dotted-half', glyph: '𝅗𝅥.', label: 'dot. half' },
-		{ value: 'dotted-quarter', glyph: '♩.', label: 'dot. ¼' },
-		{ value: 'dotted-eighth', glyph: '♪.', label: 'dot. 8th' }
+	const NOTE_OPTIONS: { value: NoteLength; label: string }[] = [
+		{ value: 'whole', label: 'whole note' },
+		{ value: 'half', label: 'half note' },
+		{ value: 'quarter', label: 'quarter note' },
+		{ value: 'eighth', label: 'eighth note' },
+		{ value: 'sixteenth', label: 'sixteenth note' },
+		{ value: 'eighth-triplet', label: 'eighth triplet' },
+		{ value: 'dotted-half', label: 'dotted half' },
+		{ value: 'dotted-quarter', label: 'dotted quarter' },
+		{ value: 'dotted-eighth', label: 'dotted eighth' }
 	];
 
-	const DIVISIONS: { value: MetronomeDivision; glyph: string }[] = [
-		{ value: 'half', glyph: '𝅗𝅥' },
-		{ value: 'quarter', glyph: '♩' },
-		{ value: 'eighth', glyph: '♪' },
-		{ value: 'triplet', glyph: '♪³' },
-		{ value: 'sixteenth', glyph: '𝅘𝅥𝅯' }
+	const DIVISIONS: { value: MetronomeDivision; length: NoteLength; label: string }[] = [
+		{ value: 'half', length: 'half', label: 'half' },
+		{ value: 'quarter', length: 'quarter', label: 'quarter' },
+		{ value: 'eighth', length: 'eighth', label: 'eighth' },
+		{ value: 'triplet', length: 'eighth-triplet', label: 'triplet' },
+		{ value: 'sixteenth', length: 'sixteenth', label: 'sixteenth' }
 	];
 
 	let settings = $state(readInitialSettings());
@@ -293,11 +294,13 @@
 				{#each DIVISIONS as d (d.value)}
 					<button
 						type="button"
+						class="icon-btn"
 						aria-pressed={settings.metronome.division === d.value}
 						onclick={() => setDivision(d.value)}
-						title={d.value}
+						aria-label={d.label}
+						title={d.label}
 					>
-						<span class="glyph">{d.glyph}</span>
+						<NoteIcon length={d.length} size={18} />
 					</button>
 				{/each}
 			</div>
@@ -379,9 +382,13 @@
 		align-items: center;
 		gap: 0.5rem;
 	}
-	.glyph {
-		font-family: 'Noto Music', 'Bravura Text', 'DejaVu Serif', serif;
-		font-size: 1.2rem;
+	.icon-btn {
+		width: 2.25rem;
+		height: 2.25rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
 	}
 	.file-button {
 		display: inline-flex;

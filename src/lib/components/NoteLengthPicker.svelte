@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { NoteLength } from '$lib/rhythm/types';
+	import NoteIcon from './NoteIcon.svelte';
 
 	interface Option {
 		value: NoteLength;
-		glyph: string;
 		label: string;
 	}
 
@@ -27,12 +27,13 @@
 	{#each options as o (o.value)}
 		<button
 			type="button"
+			class="icon-btn"
 			aria-pressed={value.includes(o.value)}
 			title={o.label}
+			aria-label={o.label}
 			onclick={() => toggle(o.value)}
 		>
-			<span class="glyph">{o.glyph}</span>
-			<span class="label">{o.label}</span>
+			<NoteIcon length={o.value} />
 		</button>
 	{/each}
 </div>
@@ -41,21 +42,14 @@
 	.row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: 0.4rem;
 	}
-	button {
+	.icon-btn {
+		width: 2.75rem;
+		height: 2.75rem;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.45rem;
-		padding: 0.4rem 0.75rem;
-	}
-	.glyph {
-		font-family: 'Noto Music', 'Bravura Text', 'DejaVu Serif', serif;
-		font-size: 1.15rem;
-		line-height: 1;
-	}
-	.label {
-		font-size: 0.85rem;
-		opacity: 0.85;
+		justify-content: center;
+		padding: 0;
 	}
 </style>
