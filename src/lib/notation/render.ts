@@ -17,14 +17,14 @@ export interface RenderResult {
 
 const STAVE_HEIGHT = 140;
 const STAVE_PADDING = 10;
-const MODIFIER_WIDTH = 90; // clef + time signature
+const FIRST_STAVE_MODIFIERS = 90; // clef + time signature
+const MID_STAVE_MODIFIERS = 20;
 const MIN_PER_BAR = 260;
 const FORMATTER_MARGIN = 20;
 
-// Units of 1/12 of a beat, so every supported note length is a whole number of
-// units. One beat = 12 units, one 4/4 bar = 48 units. Triplet-eighth fits
-// (12 / 3 = 4) and sixteenth fits (12 / 4 = 3).
 const UNITS_PER_BEAT = 12;
+const BEATS_PER_BAR = 4;
+const UNITS_PER_BAR = UNITS_PER_BEAT * BEATS_PER_BAR;
 const UNITS: Readonly<Record<NoteLength, number>> = {
 	whole: 48,
 	'dotted-half': 36,
@@ -37,52 +37,103 @@ const UNITS: Readonly<Record<NoteLength, number>> = {
 	sixteenth: 3
 };
 
+interface BarSlice {
+	events: RhythmEvent[];
+	// indexes in the original events array (so we can still produce a flat
+	// noteElements map for highlighting)
+	indexes: number[];
+}
+
 export function renderRhythm(
 	host: HTMLDivElement,
 	events: RhythmEvent[],
 	bars: number
 ): RenderResult {
 	host.innerHTML = '';
+	const slices = splitIntoBars(events, bars);
 
-	const staveNotes = events.map(toStaveNote);
-	const beams = buildBeams(events, staveNotes);
-	const tuplets = buildTuplets(events, staveNotes);
-	const ties = buildTies(events, staveNotes);
+	const voices: Voice[] = [];
+	const noteMatrix: StaveNote[][] = [];
+	const formatters: Formatter[] = [];
+	const staveWidths: number[] = [];
 
-	const voice = new Voice({ numBeats: 4 * bars, beatValue: 4 });
-	voice.setStrict(false);
-	voice.addTickables(staveNotes);
+	slices.forEach((slice, barIndex) => {
+		const staveNotes = slice.events.map(toStaveNote);
+		noteMatrix.push(staveNotes);
 
-	const formatter = new Formatter().joinVoices([voice]);
-	const minNotesWidth = formatter.preCalculateMinTotalWidth([voice]);
-	const notesWidth = Math.max(minNotesWidth + FORMATTER_MARGIN, MIN_PER_BAR * bars);
-	const staveWidth = notesWidth + MODIFIER_WIDTH;
-	const totalWidth = staveWidth + STAVE_PADDING * 2;
+		const voice = new Voice({ numBeats: BEATS_PER_BAR, beatValue: 4 });
+		voice.setStrict(false);
+		voice.addTickables(staveNotes);
+		voices.push(voice);
+
+		const formatter = new Formatter().joinVoices([voice]);
+		const minWidth = formatter.preCalculateMinTotalWidth([voice]);
+		const notesWidth = Math.max(minWidth + FORMATTER_MARGIN, MIN_PER_BAR);
+		formatters.push(formatter);
+
+		const modifierWidth = barIndex === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
+		staveWidths.push(notesWidth + modifierWidth);
+	});
+
+	const totalStaveWidth = staveWidths.reduce((a, b) => a + b, 0);
+	const totalWidth = totalStaveWidth + STAVE_PADDING * 2;
 
 	const renderer = new Renderer(host, Renderer.Backends.SVG);
 	renderer.resize(totalWidth, STAVE_HEIGHT);
 	const ctx = renderer.getContext();
 
-	const stave = new Stave(STAVE_PADDING, 10, staveWidth);
-	stave.addClef('percussion').addTimeSignature('4/4');
-	stave.setContext(ctx).draw();
+	let x = STAVE_PADDING;
+	const staves: Stave[] = [];
+	slices.forEach((_slice, barIndex) => {
+		const stave = new Stave(x, 10, staveWidths[barIndex]);
+		if (barIndex === 0) stave.addClef('percussion').addTimeSignature('4/4');
+		stave.setContext(ctx).draw();
+		staves.push(stave);
+		x += staveWidths[barIndex];
+	});
 
-	formatter.format([voice], notesWidth);
-	voice.draw(ctx, stave);
-	beams.forEach((b) => b.setContext(ctx).draw());
-	tuplets.forEach((t) => t.setContext(ctx).draw());
-	ties.forEach((t) => t.setContext(ctx).draw());
+	const flatNotes: StaveNote[] = [];
+	const flatIndexMap: number[] = [];
+	slices.forEach((slice, barIndex) => {
+		const staveNotes = noteMatrix[barIndex];
+		const notesWidth = staveWidths[barIndex] - (barIndex === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS);
+		formatters[barIndex].format([voices[barIndex]], notesWidth);
+		voices[barIndex].draw(ctx, staves[barIndex]);
 
-	const noteElements = staveNotes.map((n) => n.getSVGElement()).filter(isSvg);
-	noteElements.forEach((el, i) => {
-		el.dataset.rhythmIndex = String(i);
-		el.classList.add('rhythm-note');
+		buildBeams(slice.events, staveNotes).forEach((b) => b.setContext(ctx).draw());
+		buildTuplets(slice.events, staveNotes).forEach((t) => t.setContext(ctx).draw());
+
+		flatNotes.push(...staveNotes);
+		flatIndexMap.push(...slice.indexes);
+	});
+
+	// Cross-bar ties (if an event's tiedToNext is true and its next event lives
+	// in the following bar, StaveTie still works across different staves).
+	buildFlatTies(events, flatNotes, flatIndexMap).forEach((t) => t.setContext(ctx).draw());
+
+	const noteElements: SVGElement[] = [];
+	flatIndexMap.forEach((originalIndex, flatIdx) => {
+		const el = flatNotes[flatIdx].getSVGElement();
+		if (el instanceof SVGElement) {
+			el.dataset.rhythmIndex = String(originalIndex);
+			el.classList.add('rhythm-note');
+			noteElements[originalIndex] = el;
+		}
 	});
 	return { noteElements };
 }
 
-function isSvg(el: SVGElement | undefined): el is SVGElement {
-	return el instanceof SVGElement;
+function splitIntoBars(events: RhythmEvent[], bars: number): BarSlice[] {
+	const slices: BarSlice[] = [];
+	for (let i = 0; i < bars; i++) slices.push({ events: [], indexes: [] });
+	let position = 0;
+	events.forEach((e, i) => {
+		const barIndex = Math.min(Math.floor(position / UNITS_PER_BAR), bars - 1);
+		slices[barIndex].events.push(e);
+		slices[barIndex].indexes.push(i);
+		position += UNITS[e.length];
+	});
+	return slices;
 }
 
 function toStaveNote(e: RhythmEvent): StaveNote {
@@ -91,9 +142,7 @@ function toStaveNote(e: RhythmEvent): StaveNote {
 		keys: ['b/4'],
 		duration: e.isRest ? duration + 'r' : duration
 	});
-	if (!e.isRest && isDotted(e.length)) {
-		Dot.buildAndAttach([note], { all: true });
-	}
+	if (!e.isRest && isDotted(e.length)) Dot.buildAndAttach([note], { all: true });
 	return note;
 }
 
@@ -130,10 +179,6 @@ function isBeamable(e: RhythmEvent): boolean {
 	);
 }
 
-/**
- * Group beamable notes into beams that never cross a beat boundary.
- * For triplets, a beat's three triplet-eighths always form one beam.
- */
 function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
 	const beams: Beam[] = [];
 	let group: StaveNote[] = [];
@@ -149,7 +194,6 @@ function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
 	for (let i = 0; i < events.length; i++) {
 		const e = events[i];
 		const onBeatBoundary = positionUnits % UNITS_PER_BEAT === 0;
-
 		if (!isBeamable(e)) {
 			flush();
 		} else {
@@ -175,18 +219,30 @@ function buildTuplets(events: RhythmEvent[], notes: StaveNote[]): Tuplet[] {
 	return tuplets;
 }
 
-function buildTies(events: RhythmEvent[], notes: StaveNote[]): StaveTie[] {
+function buildFlatTies(
+	events: RhythmEvent[],
+	flatNotes: StaveNote[],
+	flatIndexMap: number[]
+): StaveTie[] {
 	const ties: StaveTie[] = [];
+	// flatIndexMap[j] = original index, so flat position of original index `k`
+	// is the j for which flatIndexMap[j] === k. Since slices preserve order and
+	// every event appears exactly once, the map is a permutation whose inverse
+	// we compute once for quick lookup.
+	const originalToFlat: number[] = [];
+	flatIndexMap.forEach((orig, flat) => (originalToFlat[orig] = flat));
 	events.forEach((e, i) => {
-		if (e.tiedToNext && i + 1 < notes.length) {
-			ties.push(new StaveTie({ firstNote: notes[i], lastNote: notes[i + 1] }));
-		}
+		if (!e.tiedToNext || i + 1 >= events.length) return;
+		const firstNote = flatNotes[originalToFlat[i]];
+		const lastNote = flatNotes[originalToFlat[i + 1]];
+		if (firstNote && lastNote) ties.push(new StaveTie({ firstNote, lastNote }));
 	});
 	return ties;
 }
 
 export function setActiveNote(elements: SVGElement[], activeIndex: number | null): void {
 	elements.forEach((el, i) => {
+		if (!el) return;
 		el.classList.toggle('rhythm-note-active', i === activeIndex);
 	});
 }
