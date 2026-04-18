@@ -44,7 +44,13 @@ function loadFromStorage(storage: Storage): Settings | null {
 	const raw = storage.getItem(STORAGE_KEY);
 	if (!raw) return null;
 	try {
-		return JSON.parse(raw) as Settings;
+		const parsed = JSON.parse(raw) as Partial<Settings>;
+		// Merge with defaults so older stored payloads missing newer fields
+		// (e.g. rhythmAudio, loop) still produce a complete Settings object.
+		return { ...DEFAULT_SETTINGS, ...parsed, metronome: {
+			...DEFAULT_SETTINGS.metronome,
+			...(parsed.metronome ?? {})
+		} };
 	} catch {
 		return null;
 	}

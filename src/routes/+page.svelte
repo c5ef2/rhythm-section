@@ -88,37 +88,42 @@
 		<button class="primary play" type="button" onclick={actions.togglePlay}>
 			{appState.isPlaying ? '⏸ Pause' : '▶ Play'}
 		</button>
-		<button type="button" onclick={actions.regenerate}>↻ Regenerate</button>
-		<button
-			type="button"
-			aria-pressed={appState.settings.loop}
-			onclick={actions.toggleLoop}
-			title="Loop playback"
-		>
-			⟳ Loop
-		</button>
-		<div class="bpm-stepper" role="group" aria-label="BPM">
-			<span class="group-label">BPM</span>
-			<button type="button" aria-label="Slower" onclick={() => actions.stepBpm(-1)}>−</button>
-			<output>{appState.settings.bpm}</output>
-			<button type="button" aria-label="Faster" onclick={() => actions.stepBpm(1)}>+</button>
+		<div class="transport-row">
+			<button type="button" class="equal" onclick={actions.regenerate}>↻ Regenerate</button>
+			<button
+				type="button"
+				class="equal"
+				aria-pressed={appState.settings.loop}
+				onclick={actions.toggleLoop}
+				title="Loop playback"
+			>
+				⟳ Loop
+			</button>
 		</div>
-		<div class="group">
-			<span class="group-label">Bars</span>
-			<button
-				type="button"
-				aria-pressed={appState.settings.bars === 1}
-				onclick={() => actions.setBars(1)}
-			>
-				1
-			</button>
-			<button
-				type="button"
-				aria-pressed={appState.settings.bars === 2}
-				onclick={() => actions.setBars(2)}
-			>
-				2
-			</button>
+		<div class="transport-row">
+			<div class="bpm-stepper" role="group" aria-label="BPM">
+				<span class="group-label">BPM</span>
+				<button type="button" aria-label="Slower" onclick={() => actions.stepBpm(-1)}>−</button>
+				<output>{appState.settings.bpm}</output>
+				<button type="button" aria-label="Faster" onclick={() => actions.stepBpm(1)}>+</button>
+			</div>
+			<div class="group bars-group">
+				<span class="group-label">Bars</span>
+				<button
+					type="button"
+					aria-pressed={appState.settings.bars === 1}
+					onclick={() => actions.setBars(1)}
+				>
+					1
+				</button>
+				<button
+					type="button"
+					aria-pressed={appState.settings.bars === 2}
+					onclick={() => actions.setBars(2)}
+				>
+					2
+				</button>
+			</div>
 		</div>
 		<button type="button" class="share" onclick={actions.copyShareLink}>⎘ Copy link</button>
 	</section>
@@ -277,13 +282,25 @@
 		min-width: 0;
 	}
 	.transport {
+		display: grid;
+		gap: 0.6rem;
+	}
+	.transport-row {
 		display: flex;
-		flex-wrap: wrap;
+		gap: 0.5rem;
 		align-items: center;
-		gap: 0.75rem;
+		flex-wrap: wrap;
 	}
 	.transport .play {
-		min-width: 6.5rem;
+		width: 100%;
+		min-height: 3rem;
+		font-size: 1.05rem;
+	}
+	.transport .equal {
+		flex: 1 1 0;
+	}
+	.transport .share {
+		width: 100%;
 	}
 	.bpm-stepper {
 		display: inline-flex;
@@ -292,22 +309,32 @@
 		background: var(--panel-2);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		padding: 0.2rem 0.5rem;
+		padding: 0.15rem 0.4rem;
+		flex: 1 1 auto;
 	}
 	.bpm-stepper button {
 		background: transparent;
 		border: none;
-		padding: 0.2rem 0.55rem;
+		padding: 0.35rem 0.65rem;
 		font-weight: 600;
+		min-height: 2.25rem;
+		flex: 0 0 auto;
 	}
 	.bpm-stepper button:hover {
 		background: var(--panel);
 	}
 	.bpm-stepper output {
-		min-width: 2.5rem;
+		min-width: 2.75rem;
 		text-align: center;
 		font-variant-numeric: tabular-nums;
 		font-weight: 600;
+		flex: 1 1 auto;
+	}
+	.bars-group {
+		flex: 0 0 auto;
+	}
+	.bars-group button {
+		min-width: 2.5rem;
 	}
 	.share {
 		margin-left: auto;
@@ -397,25 +424,6 @@
 		}
 		.subtitle {
 			font-size: 0.9rem;
-		}
-		.transport {
-			gap: 0.5rem;
-		}
-		.transport .play {
-			flex: 1 1 100%;
-			order: -1;
-			min-height: 3rem;
-		}
-		.share {
-			margin-left: 0;
-			flex: 1 1 100%;
-		}
-		.bpm-stepper output {
-			min-width: 3rem;
-		}
-		.bpm-stepper button {
-			padding: 0.5rem 0.75rem;
-			min-height: 2.5rem;
 		}
 		.icon-btn {
 			width: 2.75rem;

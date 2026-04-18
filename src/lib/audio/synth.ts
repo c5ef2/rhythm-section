@@ -52,35 +52,64 @@ function blip(
 }
 
 function kick(ctx: AudioContext, time: number): void {
+	// Low-pitched thump — phone speakers barely reproduce it but it's still
+	// the musical body of the kick.
 	const osc = ctx.createOscillator();
-	const gain = ctx.createGain();
+	const oscGain = ctx.createGain();
 	osc.type = 'sine';
-	osc.frequency.setValueAtTime(160, time);
-	osc.frequency.exponentialRampToValueAtTime(55, time + 0.05);
-	gain.gain.setValueAtTime(0.0001, time);
-	gain.gain.exponentialRampToValueAtTime(0.7, time + 0.003);
-	gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.11);
-	osc.connect(gain).connect(ctx.destination);
+	osc.frequency.setValueAtTime(180, time);
+	osc.frequency.exponentialRampToValueAtTime(60, time + 0.06);
+	oscGain.gain.setValueAtTime(0.0001, time);
+	oscGain.gain.exponentialRampToValueAtTime(0.9, time + 0.003);
+	oscGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.13);
+	osc.connect(oscGain).connect(ctx.destination);
 	osc.start(time);
-	osc.stop(time + 0.13);
+	osc.stop(time + 0.15);
+
+	// Mid-frequency attack transient so the hit is audible on phone speakers.
+	const clickBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.02), ctx.sampleRate);
+	const data = clickBuf.getChannelData(0);
+	for (let i = 0; i < data.length; i++) {
+		data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+	}
+	const click = ctx.createBufferSource();
+	const clickGain = ctx.createGain();
+	const clickFilter = ctx.createBiquadFilter();
+	clickFilter.type = 'bandpass';
+	clickFilter.frequency.value = 1500;
+	clickFilter.Q.value = 1.2;
+	clickGain.gain.setValueAtTime(0.6, time);
+	clickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
+	click.buffer = clickBuf;
+	click.connect(clickFilter).connect(clickGain).connect(ctx.destination);
+	click.start(time);
+	click.stop(time + 0.05);
 }
 
 function bass(ctx: AudioContext, time: number, durationSec: number): void {
-	const osc = ctx.createOscillator();
+	// Sawtooth at A1 (55 Hz) plus the second harmonic (A2) so phone speakers,
+	// which roll off below ~200 Hz, still give an audible pitched hit.
+	const fund = ctx.createOscillator();
+	const overtone = ctx.createOscillator();
 	const gain = ctx.createGain();
 	const filter = ctx.createBiquadFilter();
-	osc.type = 'sawtooth';
-	// A1 = 55 Hz
-	osc.frequency.value = 55;
+	fund.type = 'sawtooth';
+	fund.frequency.value = 55;
+	overtone.type = 'sawtooth';
+	overtone.frequency.value = 110;
 	filter.type = 'lowpass';
-	filter.frequency.value = 500;
-	filter.Q.value = 4;
+	filter.frequency.value = 900;
+	filter.Q.value = 3;
 	const sustain = Math.max(0.15, durationSec * 0.9);
 	gain.gain.setValueAtTime(0.0001, time);
-	gain.gain.exponentialRampToValueAtTime(0.5, time + 0.01);
-	gain.gain.exponentialRampToValueAtTime(0.3, time + sustain * 0.6);
+	gain.gain.exponentialRampToValueAtTime(0.55, time + 0.01);
+	gain.gain.exponentialRampToValueAtTime(0.35, time + sustain * 0.6);
 	gain.gain.exponentialRampToValueAtTime(0.0001, time + sustain);
-	osc.connect(filter).connect(gain).connect(ctx.destination);
-	osc.start(time);
-	osc.stop(time + sustain + 0.05);
+	fund.connect(filter);
+	overtone.connect(filter);
+	filter.connect(gain).connect(ctx.destination);
+	fund.start(time);
+	overtone.start(time);
+	fund.stop(time + sustain + 0.05);
+	overtone.stop(time + sustain + 0.05);
 }
