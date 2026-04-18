@@ -43,7 +43,8 @@ export class Scheduler {
 			bpm: this.cfg.bpm,
 			startTime,
 			metronome: this.cfg.metronome,
-			rhythmAudio: this.cfg.rhythmAudio
+			rhythmAudio: this.cfg.rhythmAudio,
+			countInBars: this.cfg.countInBars
 		});
 		this.nextEventIdx = 0;
 		this.tick();

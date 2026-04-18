@@ -33,15 +33,20 @@ export interface BuildEventListInput {
 	startTime: number;
 	metronome: MetronomeOptions;
 	rhythmAudio?: boolean;
+	countInBars?: number;
 }
 
 export function buildEventList(input: BuildEventListInput): AudioEvent[] {
-	const { events, bars, bpm, startTime, metronome, rhythmAudio = false } = input;
+	const { events, bars, bpm, startTime, metronome, rhythmAudio = false, countInBars = 0 } = input;
 	const secPerBeat = 60 / bpm;
+	const secPerBar = secPerBeat * BEATS_PER_BAR;
+	const contentStart = startTime + countInBars * secPerBar;
 	const out: AudioEvent[] = [];
 
-	if (metronome.enabled) pushMetronomeClicks(out, metronome, bars, secPerBeat, startTime);
-	pushRhythmAndHighlights(out, events, secPerBeat, startTime, rhythmAudio);
+	if (metronome.enabled) {
+		pushMetronomeClicks(out, metronome, bars + countInBars, secPerBeat, startTime);
+	}
+	pushRhythmAndHighlights(out, events, secPerBeat, contentStart, rhythmAudio);
 
 	return out.sort((a, b) => a.time - b.time);
 }

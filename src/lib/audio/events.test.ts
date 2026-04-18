@@ -110,6 +110,24 @@ describe('buildEventList', () => {
 		expect(highlights.map((h) => h.rhythmEventIndex)).toEqual([0, 1, 2, 3, 4]);
 	});
 
+	it('count-in shifts rhythm and highlights but keeps metronome clicking through the lead-in', () => {
+		const list = buildEventList({
+			events: [quarter(), quarter(), quarter(), quarter()],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: true },
+			rhythmAudio: true,
+			countInBars: 1
+		});
+		const clicks = list.filter((e) => e.type === 'metronome');
+		const firstHighlight = list.find((e) => e.type === 'highlight');
+		const firstHit = list.find((e) => e.type === 'rhythm');
+		expect(clicks.length).toBe(8); // 2 bars × 4 quarter clicks
+		expect(firstHighlight?.time).toBeCloseTo(4); // after one bar of count-in @60bpm
+		expect(firstHit?.time).toBeCloseTo(4);
+	});
+
 	it('shifts all times by startTime', () => {
 		const list = buildEventList({
 			events: [],

@@ -80,6 +80,7 @@
 			events: rhythm.events,
 			metronome: settings.metronome,
 			rhythmAudio,
+			countInBars: settings.countIn ? 1 : 0,
 			onHighlight: (i) => (activeIndex = i)
 		});
 		scheduler.start();
