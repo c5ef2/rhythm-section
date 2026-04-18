@@ -11,7 +11,7 @@
 	let { events, bars, activeIndex }: Props = $props();
 
 	let host: HTMLDivElement;
-	let noteElements: SVGElement[] = [];
+	let noteElements = $state<SVGElement[]>([]);
 
 	$effect(() => {
 		if (!host) return;
