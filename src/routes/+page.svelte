@@ -5,8 +5,8 @@
 	import { persist, readInitialSettings } from '$lib/state/settings.svelte';
 	import { randomSeed } from '$lib/rng/seeded';
 	import { Scheduler } from '$lib/audio/scheduler';
-	import { oscillatorClick } from '$lib/audio/osc-click';
-	import { encodeShare } from '$lib/state/share';
+	import { oscillatorSynth, type Synth } from '$lib/audio/synth';
+	import { encodeShare, type RhythmInstrument } from '$lib/state/share';
 	import type { NoteLength, MetronomeDivision } from '$lib/rhythm/types';
 	import { browser } from '$app/environment';
 
@@ -34,6 +34,8 @@
 	let activeIndex = $state<number | null>(null);
 	let scheduler: Scheduler | null = null;
 	let audioCtx: AudioContext | null = null;
+	let synth: Synth | null = null;
+	let rhythmAudio = $state(false);
 	let isPlaying = $state(false);
 
 	const rhythm = $derived(
@@ -63,19 +65,27 @@
 		if (!browser) return;
 		audioCtx ??= new AudioContext();
 		if (audioCtx.state === 'suspended') audioCtx.resume();
+		synth ??= oscillatorSynth(audioCtx);
+		synth.setInstrument(settings.rhythmInstrument);
 		scheduler?.stop();
 		scheduler = new Scheduler({
 			ctx: audioCtx,
-			click: oscillatorClick(audioCtx),
+			click: synth,
+			rhythm: synth,
 			bars: settings.bars,
 			bpm: settings.bpm,
 			events: rhythm.events,
 			metronome: settings.metronome,
-			rhythmAudio: false,
+			rhythmAudio,
 			onHighlight: (i) => (activeIndex = i)
 		});
 		scheduler.start();
 		isPlaying = true;
+	}
+
+	function setInstrument(inst: RhythmInstrument) {
+		settings.rhythmInstrument = inst;
+		synth?.setInstrument(inst);
 	}
 
 	function stop() {
@@ -154,6 +164,25 @@
 				<input type="checkbox" bind:checked={settings.countIn} />
 				Count-in
 			</label>
+		</div>
+		<div class="settings-row">
+			<label>
+				<input type="checkbox" bind:checked={rhythmAudio} />
+				Play rhythm audio
+			</label>
+			<span class="group-label">Instrument</span>
+			<div class="group">
+				<button
+					type="button"
+					aria-pressed={settings.rhythmInstrument === 'drum'}
+					onclick={() => setInstrument('drum')}>Drum</button
+				>
+				<button
+					type="button"
+					aria-pressed={settings.rhythmInstrument === 'bass'}
+					onclick={() => setInstrument('bass')}>Bass</button
+				>
+			</div>
 		</div>
 	</section>
 
