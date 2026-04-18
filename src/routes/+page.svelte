@@ -38,6 +38,7 @@
 	let synth: Synth | null = null;
 	let rhythmAudio = $state(false);
 	let isPlaying = $state(false);
+	let loop = $state(true);
 	let soundFontStatus = $state<'none' | 'loading' | 'loaded' | 'error'>('none');
 	let soundFontName = $state<string>('');
 
@@ -81,7 +82,12 @@
 			metronome: settings.metronome,
 			rhythmAudio,
 			countInBars: settings.countIn ? 1 : 0,
-			onHighlight: (i) => (activeIndex = i)
+			loop,
+			onHighlight: (i) => (activeIndex = i),
+			onComplete: () => {
+				isPlaying = false;
+				activeIndex = null;
+			}
 		});
 		scheduler.start();
 		isPlaying = true;
@@ -116,6 +122,14 @@
 		if (file) loadSoundFont(file);
 	}
 
+	function onKeydown(e: KeyboardEvent) {
+		if (e.code !== 'Space') return;
+		const target = e.target as HTMLElement | null;
+		if (target && /^(input|textarea|button)$/i.test(target.tagName)) return;
+		e.preventDefault();
+		togglePlay();
+	}
+
 	function stop() {
 		scheduler?.stop();
 		scheduler = null;
@@ -143,6 +157,8 @@
 	<title>Rhythm Section</title>
 </svelte:head>
 
+<svelte:window onkeydown={onKeydown} />
+
 <main>
 	<header>
 		<h1>Rhythm Section</h1>
@@ -154,6 +170,9 @@
 			{isPlaying ? '⏸ Pause' : '▶ Play'}
 		</button>
 		<button type="button" onclick={regenerate}>↻ Regenerate</button>
+		<button type="button" aria-pressed={loop} onclick={() => (loop = !loop)} title="Loop playback">
+			⟳ Loop
+		</button>
 		<label>
 			BPM
 			<input type="number" min="30" max="300" step="1" bind:value={settings.bpm} />

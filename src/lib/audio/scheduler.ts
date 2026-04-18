@@ -18,6 +18,8 @@ export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> 
 	click: ClickSink;
 	rhythm?: RhythmSink;
 	onHighlight: HighlightListener;
+	loop?: boolean;
+	onComplete?: () => void;
 }
 
 export class Scheduler {
@@ -73,10 +75,33 @@ export class Scheduler {
 			this.nextEventIdx++;
 		}
 		if (this.nextEventIdx >= this.events.length && this.running) {
-			// Drain: wait until last scheduled time passes, then stop.
 			const last = this.events[this.events.length - 1];
-			if (!last || this.ctx.currentTime >= last.time + 0.2) this.stop();
+			if (!last || this.ctx.currentTime >= last.time + 0.2) {
+				if (this.cfg.loop) this.restartSeamless();
+				else this.finish();
+			}
 		}
+	}
+
+	private finish(): void {
+		this.stop();
+		this.cfg.onComplete?.();
+	}
+
+	private restartSeamless(): void {
+		const last = this.events[this.events.length - 1];
+		const nextStart = last ? last.time + 0.001 : this.ctx.currentTime + 0.05;
+		this.events = buildEventList({
+			events: this.cfg.events,
+			bars: this.cfg.bars,
+			bpm: this.cfg.bpm,
+			startTime: nextStart,
+			metronome: this.cfg.metronome,
+			rhythmAudio: this.cfg.rhythmAudio,
+			// Count-in only on the very first playthrough.
+			countInBars: 0
+		});
+		this.nextEventIdx = 0;
 	}
 
 	private dispatch(e: AudioEvent): void {
