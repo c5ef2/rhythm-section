@@ -196,6 +196,63 @@ describe('generateRhythm (triplets)', () => {
 	});
 });
 
+describe('beat-boundary splitting', () => {
+	it('never emits a binary event that crosses a beat boundary', () => {
+		for (let seed = 0; seed < 200; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: [
+					'whole',
+					'half',
+					'quarter',
+					'eighth',
+					'sixteenth',
+					'dotted-half',
+					'dotted-quarter',
+					'dotted-eighth'
+				],
+				allowRests: true,
+				allowTies: false,
+				seed
+			});
+			let pos = 0;
+			for (const e of events) {
+				if (e.kind === 'binary') {
+					const beatStart = Math.floor(pos / 4);
+					const beatEnd = Math.floor((pos + e.durationSlots - 1) / 4);
+					expect(beatEnd).toBe(beatStart);
+					pos += e.durationSlots;
+				} else {
+					pos += 4 / 3;
+				}
+			}
+		}
+	});
+
+	it('ties non-rest pieces that used to be one cross-beat note', () => {
+		// A dotted-quarter (6 slots) starting at slot 2 of beat 1 crosses into beat 2.
+		// To force this shape, use a minimal allowed set and a seed we sanity-check.
+		let sawTiedSplit = false;
+		for (let seed = 0; seed < 200; seed++) {
+			const { events } = generateRhythm({
+				bars: 1,
+				allowedLengths: ['eighth', 'dotted-quarter'],
+				allowRests: false,
+				allowTies: false,
+				seed
+			});
+			// Any dotted-quarter starting off-beat must have been split; look for a pair
+			// of non-rest adjacent events where the first is tied.
+			for (let i = 0; i < events.length - 1; i++) {
+				if (events[i].tiedToNext && !events[i].isRest && !events[i + 1].isRest) {
+					sawTiedSplit = true;
+				}
+			}
+		}
+		expect(sawTiedSplit).toBe(true);
+	});
+});
+
 describe('generateRhythm (ties)', () => {
 	it('produces at least one tied note across many seeds when allowTies=true', () => {
 		let sawTie = false;

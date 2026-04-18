@@ -8,6 +8,13 @@ const TRIPLET_WEIGHT_WHEN_MIXED = 0.3;
 const SLOTS_PER_BAR = 16;
 const SLOTS_PER_BEAT = 4;
 
+const LENGTH_BY_SLOTS: Readonly<Record<1 | 2 | 3 | 4, BinaryLength>> = {
+	1: 'sixteenth',
+	2: 'eighth',
+	3: 'dotted-eighth',
+	4: 'quarter'
+};
+
 type BinaryLength = Exclude<NoteLength, 'eighth-triplet'>;
 
 const BINARY_LENGTHS_SET = new Set<NoteLength>([
@@ -60,7 +67,40 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 	}
 
 	if (options.allowTies) applyTiePass(events, rng);
-	return { events, seed: options.seed };
+	return { events: splitAtBeatBoundaries(events), seed: options.seed };
+}
+
+/**
+ * Splits any binary event that crosses a beat boundary into per-beat pieces
+ * connected by ties. Triplet events always fit within one beat and are left
+ * alone. Rest pieces are split too (for readability) but never tied.
+ */
+function splitAtBeatBoundaries(events: RhythmEvent[]): RhythmEvent[] {
+	const out: RhythmEvent[] = [];
+	let pos = 0; // in sixteenth-equivalent slots; triplets advance by 4/3
+	for (const e of events) {
+		if (e.kind === 'triplet') {
+			out.push(e);
+			pos += 4 / 3;
+			continue;
+		}
+		let remaining = e.durationSlots;
+		while (remaining > 0) {
+			const slotsLeftInBeat = SLOTS_PER_BEAT - (pos % SLOTS_PER_BEAT);
+			const take = Math.min(remaining, slotsLeftInBeat) as 1 | 2 | 3 | 4;
+			const isFinalPiece = remaining === take;
+			out.push({
+				kind: 'binary',
+				length: LENGTH_BY_SLOTS[take],
+				durationSlots: take,
+				isRest: e.isRest,
+				tiedToNext: e.isRest ? false : !isFinalPiece || e.tiedToNext
+			});
+			pos += take;
+			remaining -= take;
+		}
+	}
+	return out;
 }
 
 function shouldPickTriplet(
