@@ -11,6 +11,8 @@ const sample: SharedState = {
 	metronome: { enabled: true, division: 'eighth', emphasizeFirstBeat: true },
 	rhythmInstrument: 'bass',
 	countIn: true,
+	rhythmAudio: true,
+	loop: false,
 	seed: 123456789
 };
 

@@ -15,6 +15,8 @@ export const DEFAULT_SETTINGS: Settings = {
 	metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: true },
 	rhythmInstrument: 'drum',
 	countIn: true,
+	rhythmAudio: false,
+	loop: true,
 	seed: 1
 };
 

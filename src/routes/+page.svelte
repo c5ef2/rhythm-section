@@ -1,18 +1,12 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Staff from '$lib/components/Staff.svelte';
 	import NoteIcon from '$lib/components/NoteIcon.svelte';
 	import NoteLengthPicker from '$lib/components/NoteLengthPicker.svelte';
-	import { generateRhythm } from '$lib/rhythm/generator';
-	import { persist, readInitialSettings } from '$lib/state/settings.svelte';
-	import { randomSeed } from '$lib/rng/seeded';
-	import { untrack } from 'svelte';
-	import { Scheduler } from '$lib/audio/scheduler';
-	import { oscillatorSynth, type Synth } from '$lib/audio/synth';
-	import { createSoundFontSynth } from '$lib/audio/soundfont-synth';
-	import { bpmStepDown, bpmStepUp, snapBpm } from '$lib/audio/bpm';
-	import { encodeShare, type RhythmInstrument } from '$lib/state/share';
-	import type { NoteLength, MetronomeDivision } from '$lib/rhythm/types';
-	import { browser } from '$app/environment';
+	import { appState } from '$lib/state/app-state.svelte';
+	import * as actions from '$lib/state/actions.svelte';
+	import { persist } from '$lib/state/settings.svelte';
+	import type { MetronomeDivision, NoteLength } from '$lib/rhythm/types';
 
 	const NOTE_OPTIONS: { value: NoteLength; label: string }[] = [
 		{ value: 'whole', label: 'whole note' },
@@ -34,160 +28,48 @@
 		{ value: 'sixteenth', length: 'sixteenth', label: 'sixteenth' }
 	];
 
-	let settings = $state(readInitialSettings());
-	let activeIndex = $state<number | null>(null);
-	let scheduler: Scheduler | null = null;
-	let audioCtx: AudioContext | null = null;
-	let synth: Synth | null = null;
-	let rhythmAudio = $state(false);
-	let isPlaying = $state(false);
-	let loop = $state(true);
-	let soundFontStatus = $state<'none' | 'loading' | 'loaded' | 'error'>('none');
-	let soundFontName = $state<string>('');
-
-	const rhythm = $derived(
-		generateRhythm({
-			bars: settings.bars,
-			allowedLengths: settings.allowedLengths,
-			allowRests: settings.allowRests,
-			allowTies: settings.allowTies,
-			seed: settings.seed
-		})
-	);
-
+	// Keep settings snapshot in localStorage whenever they change.
 	$effect(() => {
-		persist($state.snapshot(settings));
+		persist($state.snapshot(appState.settings));
 	});
 
-	// Restart the scheduler whenever any playback-affecting setting changes,
-	// so the user hears edits take effect without manually pressing play.
+	// Snap any out-of-notch BPM (e.g. from an older share URL) to the Maelzel scale.
 	$effect(() => {
-		// Touch every dependency so this effect re-runs on change.
-		void settings.bpm;
-		void settings.bars;
-		void settings.metronome.enabled;
-		void settings.metronome.division;
-		void settings.metronome.emphasizeFirstBeat;
-		void settings.countIn;
-		void rhythm.events;
-		void rhythmAudio;
-		void loop;
+		void appState.settings.bpm;
+		untrack(actions.normaliseBpm);
+	});
+
+	// Any change to playback-affecting state restarts the player while running.
+	$effect(() => {
+		const s = appState.settings;
+		void s.bpm;
+		void s.bars;
+		void s.metronome.enabled;
+		void s.metronome.division;
+		void s.metronome.emphasizeFirstBeat;
+		void s.countIn;
+		void s.rhythmAudio;
+		void s.rhythmInstrument;
+		void s.loop;
+		void appState.rhythm.events;
 		untrack(() => {
-			if (!isPlaying) return;
-			scheduler?.stop();
-			scheduler = null;
-			isPlaying = false;
-			start();
+			actions.restartIfPlaying();
 		});
 	});
-
-	function regenerate() {
-		settings.seed = randomSeed();
-	}
-
-	function togglePlay() {
-		if (isPlaying) stop();
-		else start();
-	}
-
-	function start() {
-		if (!browser) return;
-		audioCtx ??= new AudioContext();
-		if (audioCtx.state === 'suspended') audioCtx.resume();
-		synth ??= oscillatorSynth(audioCtx);
-		synth.setInstrument(settings.rhythmInstrument);
-		scheduler?.stop();
-		scheduler = new Scheduler({
-			ctx: audioCtx,
-			click: synth,
-			rhythm: synth,
-			bars: settings.bars,
-			bpm: settings.bpm,
-			events: rhythm.events,
-			metronome: settings.metronome,
-			rhythmAudio,
-			countInBars: settings.countIn ? 1 : 0,
-			loop,
-			onHighlight: (i) => (activeIndex = i),
-			onComplete: () => {
-				isPlaying = false;
-				activeIndex = null;
-			}
-		});
-		scheduler.start();
-		isPlaying = true;
-	}
-
-	function setInstrument(inst: RhythmInstrument) {
-		settings.rhythmInstrument = inst;
-		synth?.setInstrument(inst);
-	}
-
-	async function loadSoundFont(file: File) {
-		if (!browser) return;
-		soundFontStatus = 'loading';
-		soundFontName = file.name;
-		try {
-			audioCtx ??= new AudioContext();
-			const buf = await file.arrayBuffer();
-			const next = await createSoundFontSynth({ ctx: audioCtx, soundFontBuffer: buf });
-			next.setInstrument(settings.rhythmInstrument);
-			synth?.destroy();
-			synth = next;
-			soundFontStatus = 'loaded';
-		} catch (err) {
-			console.error(err);
-			soundFontStatus = 'error';
-		}
-	}
-
-	function onSoundFontFile(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) loadSoundFont(file);
-	}
 
 	function onKeydown(e: KeyboardEvent) {
 		if (e.code !== 'Space') return;
 		const target = e.target as HTMLElement | null;
 		if (target && /^(input|textarea|button)$/i.test(target.tagName)) return;
 		e.preventDefault();
-		togglePlay();
+		actions.togglePlay();
 	}
 
-	function stop() {
-		scheduler?.stop();
-		scheduler = null;
-		isPlaying = false;
-		activeIndex = null;
+	function onSoundFontFile(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (file) actions.loadSoundFontFile(file);
 	}
-
-	async function copyShareLink() {
-		if (!browser) return;
-		const url = new URL(window.location.href);
-		url.hash = 's=' + encodeShare($state.snapshot(settings));
-		await navigator.clipboard.writeText(url.toString());
-	}
-
-	function setDivision(d: MetronomeDivision) {
-		settings.metronome = { ...settings.metronome, division: d };
-	}
-
-	function setBars(b: 1 | 2) {
-		settings.bars = b;
-	}
-
-	function nudgeBpm(delta: 1 | -1) {
-		settings.bpm = delta === 1 ? bpmStepUp(settings.bpm) : bpmStepDown(settings.bpm);
-	}
-
-	$effect(() => {
-		// Any direct edit that produces an off-notch value (via share URL or
-		// stored state from a previous freer version) gets snapped the moment
-		// it becomes current.
-		const snapped = snapBpm(settings.bpm);
-		if (snapped !== settings.bpm) settings.bpm = snapped;
-	});
 </script>
 
 <svelte:head>
@@ -203,88 +85,121 @@
 	</header>
 
 	<section class="card transport">
-		<button class="primary play" type="button" onclick={togglePlay}>
-			{isPlaying ? '⏸ Pause' : '▶ Play'}
+		<button class="primary play" type="button" onclick={actions.togglePlay}>
+			{appState.isPlaying ? '⏸ Pause' : '▶ Play'}
 		</button>
-		<button type="button" onclick={regenerate}>↻ Regenerate</button>
-		<button type="button" aria-pressed={loop} onclick={() => (loop = !loop)} title="Loop playback">
+		<button type="button" onclick={actions.regenerate}>↻ Regenerate</button>
+		<button
+			type="button"
+			aria-pressed={appState.settings.loop}
+			onclick={actions.toggleLoop}
+			title="Loop playback"
+		>
 			⟳ Loop
 		</button>
 		<div class="bpm-stepper" role="group" aria-label="BPM">
 			<span class="group-label">BPM</span>
-			<button type="button" aria-label="Slower" onclick={() => nudgeBpm(-1)}>−</button>
-			<output>{settings.bpm}</output>
-			<button type="button" aria-label="Faster" onclick={() => nudgeBpm(1)}>+</button>
+			<button type="button" aria-label="Slower" onclick={() => actions.stepBpm(-1)}>−</button>
+			<output>{appState.settings.bpm}</output>
+			<button type="button" aria-label="Faster" onclick={() => actions.stepBpm(1)}>+</button>
 		</div>
 		<div class="group">
 			<span class="group-label">Bars</span>
-			<button type="button" aria-pressed={settings.bars === 1} onclick={() => setBars(1)}>1</button>
-			<button type="button" aria-pressed={settings.bars === 2} onclick={() => setBars(2)}>2</button>
+			<button
+				type="button"
+				aria-pressed={appState.settings.bars === 1}
+				onclick={() => actions.setBars(1)}
+			>
+				1
+			</button>
+			<button
+				type="button"
+				aria-pressed={appState.settings.bars === 2}
+				onclick={() => actions.setBars(2)}
+			>
+				2
+			</button>
 		</div>
-		<button type="button" class="share" onclick={copyShareLink}>⎘ Copy link</button>
+		<button type="button" class="share" onclick={actions.copyShareLink}>⎘ Copy link</button>
 	</section>
 
 	<section class="card staff-card">
-		<Staff events={rhythm.events} bars={settings.bars} {activeIndex} />
+		<Staff
+			events={appState.rhythm.events}
+			bars={appState.settings.bars}
+			activeIndex={appState.activeIndex}
+		/>
 	</section>
 
 	<section class="card settings">
 		<div class="settings-row">
 			<span class="group-label">Allowed note lengths</span>
 			<NoteLengthPicker
-				value={settings.allowedLengths}
+				value={appState.settings.allowedLengths}
 				options={NOTE_OPTIONS}
-				onChange={(next) => (settings.allowedLengths = next)}
+				onChange={actions.setAllowedLengths}
 			/>
 		</div>
 		<div class="settings-row">
 			<label>
-				<input type="checkbox" bind:checked={settings.allowRests} />
+				<input
+					type="checkbox"
+					checked={appState.settings.allowRests}
+					onchange={actions.toggleAllowRests}
+				/>
 				Include rests
 			</label>
 			<label>
-				<input type="checkbox" bind:checked={settings.allowTies} />
+				<input
+					type="checkbox"
+					checked={appState.settings.allowTies}
+					onchange={actions.toggleAllowTies}
+				/>
 				Include ties
 			</label>
 			<label>
-				<input type="checkbox" bind:checked={settings.countIn} />
+				<input
+					type="checkbox"
+					checked={appState.settings.countIn}
+					onchange={actions.toggleCountIn}
+				/>
 				Count-in
 			</label>
 		</div>
 		<div class="settings-row">
 			<label>
-				<input type="checkbox" bind:checked={rhythmAudio} />
+				<input
+					type="checkbox"
+					checked={appState.settings.rhythmAudio}
+					onchange={actions.toggleRhythmAudio}
+				/>
 				Play rhythm audio
 			</label>
 			<span class="group-label">Instrument</span>
 			<div class="group">
 				<button
 					type="button"
-					aria-pressed={settings.rhythmInstrument === 'drum'}
-					onclick={() => setInstrument('drum')}>Drum</button
+					aria-pressed={appState.settings.rhythmInstrument === 'drum'}
+					onclick={() => actions.setInstrument('drum')}>Drum</button
 				>
 				<button
 					type="button"
-					aria-pressed={settings.rhythmInstrument === 'bass'}
-					onclick={() => setInstrument('bass')}>Bass</button
+					aria-pressed={appState.settings.rhythmInstrument === 'bass'}
+					onclick={() => actions.setInstrument('bass')}>Bass</button
 				>
 			</div>
 		</div>
 		<div class="settings-row">
 			<span class="group-label">SoundFont</span>
 			<label class="file-button">
-				<input
-					type="file"
-					accept=".sf2,.sf3,.dls"
-					onchange={onSoundFontFile}
-				/>
+				<input type="file" accept=".sf2,.sf3,.dls" onchange={onSoundFontFile} />
 				<span>Load .sf2 / .sf3</span>
 			</label>
-			{#if soundFontStatus === 'loading'}
-				<span class="status">Loading {soundFontName}…</span>
-			{:else if soundFontStatus === 'loaded'}
-				<span class="status ok">✓ {soundFontName}</span>
-			{:else if soundFontStatus === 'error'}
+			{#if appState.soundFontStatus === 'loading'}
+				<span class="status">Loading {appState.soundFontName}…</span>
+			{:else if appState.soundFontStatus === 'loaded'}
+				<span class="status ok">✓ {appState.soundFontName}</span>
+			{:else if appState.soundFontStatus === 'error'}
 				<span class="status err">Failed to load</span>
 			{:else}
 				<span class="status muted">Using synthesised fallback</span>
@@ -295,11 +210,19 @@
 	<section class="card settings">
 		<div class="settings-row">
 			<label>
-				<input type="checkbox" bind:checked={settings.metronome.enabled} />
+				<input
+					type="checkbox"
+					checked={appState.settings.metronome.enabled}
+					onchange={actions.toggleMetronome}
+				/>
 				Metronome
 			</label>
 			<label>
-				<input type="checkbox" bind:checked={settings.metronome.emphasizeFirstBeat} />
+				<input
+					type="checkbox"
+					checked={appState.settings.metronome.emphasizeFirstBeat}
+					onchange={actions.toggleEmphasizeFirstBeat}
+				/>
 				Emphasize first beat
 			</label>
 		</div>
@@ -310,8 +233,8 @@
 					<button
 						type="button"
 						class="icon-btn"
-						aria-pressed={settings.metronome.division === d.value}
-						onclick={() => setDivision(d.value)}
+						aria-pressed={appState.settings.metronome.division === d.value}
+						onclick={() => actions.setMetronomeDivision(d.value)}
 						aria-label={d.label}
 						title={d.label}
 					>

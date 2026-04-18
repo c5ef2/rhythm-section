@@ -11,6 +11,8 @@ export interface SharedState {
 	metronome: MetronomeOptions;
 	rhythmInstrument: RhythmInstrument;
 	countIn: boolean;
+	rhythmAudio: boolean;
+	loop: boolean;
 	seed: number;
 }
 
@@ -22,6 +24,11 @@ export function decodeShare(encoded: string): SharedState | null {
 	try {
 		const json = fromBase64Url(encoded);
 		const parsed = JSON.parse(json);
+		if (parsed && typeof parsed === 'object') {
+			const p = parsed as Record<string, unknown>;
+			if (typeof p.rhythmAudio !== 'boolean') p.rhythmAudio = false;
+			if (typeof p.loop !== 'boolean') p.loop = true;
+		}
 		return isSharedState(parsed) ? parsed : null;
 	} catch {
 		return null;
@@ -55,6 +62,8 @@ function isSharedState(v: unknown): v is SharedState {
 		typeof s.allowTies === 'boolean' &&
 		typeof s.seed === 'number' &&
 		typeof s.countIn === 'boolean' &&
+		typeof s.rhythmAudio === 'boolean' &&
+		typeof s.loop === 'boolean' &&
 		(s.rhythmInstrument === 'drum' || s.rhythmInstrument === 'bass') &&
 		isMetronomeOptions(s.metronome)
 	);
