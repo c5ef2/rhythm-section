@@ -9,6 +9,7 @@
 	import { Scheduler } from '$lib/audio/scheduler';
 	import { oscillatorSynth, type Synth } from '$lib/audio/synth';
 	import { createSoundFontSynth } from '$lib/audio/soundfont-synth';
+	import { bpmStepDown, bpmStepUp, snapBpm } from '$lib/audio/bpm';
 	import { encodeShare, type RhythmInstrument } from '$lib/state/share';
 	import type { NoteLength, MetronomeDivision } from '$lib/rhythm/types';
 	import { browser } from '$app/environment';
@@ -175,6 +176,18 @@
 	function setBars(b: 1 | 2) {
 		settings.bars = b;
 	}
+
+	function nudgeBpm(delta: 1 | -1) {
+		settings.bpm = delta === 1 ? bpmStepUp(settings.bpm) : bpmStepDown(settings.bpm);
+	}
+
+	$effect(() => {
+		// Any direct edit that produces an off-notch value (via share URL or
+		// stored state from a previous freer version) gets snapped the moment
+		// it becomes current.
+		const snapped = snapBpm(settings.bpm);
+		if (snapped !== settings.bpm) settings.bpm = snapped;
+	});
 </script>
 
 <svelte:head>
@@ -197,10 +210,12 @@
 		<button type="button" aria-pressed={loop} onclick={() => (loop = !loop)} title="Loop playback">
 			⟳ Loop
 		</button>
-		<label>
-			BPM
-			<input type="number" min="30" max="300" step="1" bind:value={settings.bpm} />
-		</label>
+		<div class="bpm-stepper" role="group" aria-label="BPM">
+			<span class="group-label">BPM</span>
+			<button type="button" aria-label="Slower" onclick={() => nudgeBpm(-1)}>−</button>
+			<output>{settings.bpm}</output>
+			<button type="button" aria-label="Faster" onclick={() => nudgeBpm(1)}>+</button>
+		</div>
 		<div class="group">
 			<span class="group-label">Bars</span>
 			<button type="button" aria-pressed={settings.bars === 1} onclick={() => setBars(1)}>1</button>
@@ -339,6 +354,30 @@
 	}
 	.transport .play {
 		min-width: 6.5rem;
+	}
+	.bpm-stepper {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		background: var(--panel-2);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: 0.2rem 0.5rem;
+	}
+	.bpm-stepper button {
+		background: transparent;
+		border: none;
+		padding: 0.2rem 0.55rem;
+		font-weight: 600;
+	}
+	.bpm-stepper button:hover {
+		background: var(--panel);
+	}
+	.bpm-stepper output {
+		min-width: 2.5rem;
+		text-align: center;
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
 	}
 	.share {
 		margin-left: auto;
