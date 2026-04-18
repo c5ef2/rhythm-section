@@ -11,11 +11,22 @@
 	let { events, bars, activeIndex }: Props = $props();
 
 	let host: HTMLDivElement;
+	let availableWidth = $state(0);
 	let noteElements = $state<SVGElement[]>([]);
 
 	$effect(() => {
 		if (!host) return;
-		const result = renderRhythm(host, events, bars);
+		const observer = new ResizeObserver((entries) => {
+			const w = entries[0]?.contentRect.width ?? 0;
+			if (w > 0) availableWidth = w;
+		});
+		observer.observe(host);
+		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		if (!host || availableWidth <= 0) return;
+		const result = renderRhythm(host, events, bars, availableWidth);
 		noteElements = result.noteElements;
 	});
 
@@ -30,7 +41,12 @@
 	.staff {
 		display: block;
 		width: 100%;
-		overflow-x: auto;
+		min-width: 0;
+	}
+	.staff :global(svg) {
+		display: block;
+		max-width: 100%;
+		height: auto;
 	}
 	.staff :global(.rhythm-note-active) {
 		fill: #e36414;

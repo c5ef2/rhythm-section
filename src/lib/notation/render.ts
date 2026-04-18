@@ -20,7 +20,8 @@ const STAVE_HEIGHT = 140;
 const STAVE_PADDING = 10;
 const FIRST_STAVE_MODIFIERS = 90; // clef + time signature
 const MID_STAVE_MODIFIERS = 20;
-const MIN_PER_BAR = 260;
+const MIN_PER_BAR = 220;
+const STACK_BREAKPOINT = 520; // below this, 2 bars stack vertically instead of side by side
 const FORMATTER_MARGIN = 20;
 
 const UNITS_PER_BEAT = 12;
@@ -48,7 +49,8 @@ interface BarSlice {
 export function renderRhythm(
 	host: HTMLDivElement,
 	events: RhythmEvent[],
-	bars: number
+	bars: number,
+	availableWidth: number
 ): RenderResult {
 	host.innerHTML = '';
 	const slices = splitIntoBars(events, bars);
@@ -56,9 +58,9 @@ export function renderRhythm(
 	const voices: Voice[] = [];
 	const noteMatrix: StaveNote[][] = [];
 	const formatters: Formatter[] = [];
-	const staveWidths: number[] = [];
+	const minNotesWidths: number[] = [];
 
-	slices.forEach((slice, barIndex) => {
+	slices.forEach((slice) => {
 		const staveNotes = slice.events.map(toStaveNote);
 		noteMatrix.push(staveNotes);
 
@@ -68,29 +70,40 @@ export function renderRhythm(
 		voices.push(voice);
 
 		const formatter = new Formatter().joinVoices([voice]);
-		const minWidth = formatter.preCalculateMinTotalWidth([voice]);
-		const notesWidth = Math.max(minWidth + FORMATTER_MARGIN, MIN_PER_BAR);
+		minNotesWidths.push(formatter.preCalculateMinTotalWidth([voice]));
 		formatters.push(formatter);
-
-		const modifierWidth = barIndex === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
-		staveWidths.push(notesWidth + modifierWidth);
 	});
 
-	const totalStaveWidth = staveWidths.reduce((a, b) => a + b, 0);
-	const totalWidth = totalStaveWidth + STAVE_PADDING * 2;
+	// Below the stack breakpoint and with >1 bar, render bars on separate
+	// lines so each bar gets the full viewport width.
+	const stacked = bars > 1 && availableWidth > 0 && availableWidth < STACK_BREAKPOINT;
+	const rows: number[][] = stacked
+		? slices.map((_, i) => [i])
+		: [slices.map((_, i) => i)];
+
+	const staveWidths = computeStaveWidths(minNotesWidths, rows, availableWidth);
+	const rowWidths = rows.map((row) => row.reduce((sum, i) => sum + staveWidths[i], 0));
+	const totalWidth = Math.max(...rowWidths) + STAVE_PADDING * 2;
+	const totalHeight = STAVE_HEIGHT * rows.length;
 
 	const renderer = new Renderer(host, Renderer.Backends.SVG);
-	renderer.resize(totalWidth, STAVE_HEIGHT);
+	renderer.resize(totalWidth, totalHeight);
 	const ctx = renderer.getContext();
 
-	let x = STAVE_PADDING;
-	const staves: Stave[] = [];
-	slices.forEach((_slice, barIndex) => {
-		const stave = new Stave(x, 10, staveWidths[barIndex]);
-		if (barIndex === 0) stave.addClef('bass').addTimeSignature('4/4');
-		stave.setContext(ctx).draw();
-		staves.push(stave);
-		x += staveWidths[barIndex];
+	const staves: Stave[] = new Array(slices.length);
+	rows.forEach((row, rowIdx) => {
+		let x = STAVE_PADDING;
+		const y = 10 + rowIdx * STAVE_HEIGHT;
+		row.forEach((barIndex) => {
+			const stave = new Stave(x, y, staveWidths[barIndex]);
+			const firstOnRow = row[0] === barIndex;
+			// Every stacked row gets its own clef + time sig; side-by-side only the
+			// leftmost stave does.
+			if (firstOnRow) stave.addClef('bass').addTimeSignature('4/4');
+			stave.setContext(ctx).draw();
+			staves[barIndex] = stave;
+			x += staveWidths[barIndex];
+		});
 	});
 
 	const flatNotes: StaveNote[] = [];
@@ -104,10 +117,11 @@ export function renderRhythm(
 		perBarBeams.push(buildBeams(slice.events, staveNotes));
 		perBarTuplets.push(buildTuplets(slice.events, staveNotes));
 	});
+	const firstOnRowSet = new Set<number>(rows.map((row) => row[0]));
 	slices.forEach((slice, barIndex) => {
 		const staveNotes = noteMatrix[barIndex];
-		const notesWidth =
-			staveWidths[barIndex] - (barIndex === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS);
+		const modifier = firstOnRowSet.has(barIndex) ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
+		const notesWidth = staveWidths[barIndex] - modifier;
 		formatters[barIndex].format([voices[barIndex]], notesWidth);
 		voices[barIndex].draw(ctx, staves[barIndex]);
 
@@ -132,6 +146,39 @@ export function renderRhythm(
 		}
 	});
 	return { noteElements };
+}
+
+/**
+ * Compute a width for each bar-stave. If the total natural width fits inside
+ * the available viewport, each stave gets exactly what it needs. Otherwise
+ * shrink staves down (respecting a per-bar minimum) so the full row fits.
+ */
+function computeStaveWidths(
+	minNotesWidths: number[],
+	rows: number[][],
+	availableWidth: number
+): number[] {
+	const widths = new Array(minNotesWidths.length).fill(0) as number[];
+	rows.forEach((row) => {
+		const rowBudget = Math.max(0, availableWidth - STAVE_PADDING * 2);
+		const natural = row.map((i, localIdx) => {
+			const modifiers = localIdx === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
+			return Math.max(minNotesWidths[i] + FORMATTER_MARGIN, MIN_PER_BAR) + modifiers;
+		});
+		const naturalSum = natural.reduce((a, b) => a + b, 0);
+		if (rowBudget === 0 || naturalSum <= rowBudget) {
+			row.forEach((i, localIdx) => (widths[i] = natural[localIdx]));
+			return;
+		}
+		// Too wide — scale each bar down proportionally.
+		const scale = rowBudget / naturalSum;
+		row.forEach((i, localIdx) => {
+			const modifiers = localIdx === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
+			const minimum = Math.max(minNotesWidths[i] * 0.6, MIN_PER_BAR * 0.6) + modifiers;
+			widths[i] = Math.max(minimum, natural[localIdx] * scale);
+		});
+	});
+	return widths;
 }
 
 function splitIntoBars(events: RhythmEvent[], bars: number): BarSlice[] {

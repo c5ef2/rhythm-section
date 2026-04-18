@@ -274,6 +274,7 @@
 		border-radius: var(--radius);
 		padding: 1rem 1.1rem;
 		box-shadow: var(--shadow);
+		min-width: 0;
 	}
 	.transport {
 		display: flex;
@@ -334,6 +335,7 @@
 		padding: 1rem;
 		background: #ffffff;
 		border-color: #e2e2e2;
+		overflow-x: auto;
 	}
 	.settings {
 		display: grid;
