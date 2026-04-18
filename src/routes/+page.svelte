@@ -4,6 +4,7 @@
 	import { generateRhythm } from '$lib/rhythm/generator';
 	import { persist, readInitialSettings } from '$lib/state/settings.svelte';
 	import { randomSeed } from '$lib/rng/seeded';
+	import { untrack } from 'svelte';
 	import { Scheduler } from '$lib/audio/scheduler';
 	import { oscillatorSynth, type Synth } from '$lib/audio/synth';
 	import { createSoundFontSynth } from '$lib/audio/soundfont-synth';
@@ -54,6 +55,28 @@
 
 	$effect(() => {
 		persist($state.snapshot(settings));
+	});
+
+	// Restart the scheduler whenever any playback-affecting setting changes,
+	// so the user hears edits take effect without manually pressing play.
+	$effect(() => {
+		// Touch every dependency so this effect re-runs on change.
+		void settings.bpm;
+		void settings.bars;
+		void settings.metronome.enabled;
+		void settings.metronome.division;
+		void settings.metronome.emphasizeFirstBeat;
+		void settings.countIn;
+		void rhythm.events;
+		void rhythmAudio;
+		void loop;
+		untrack(() => {
+			if (!isPlaying) return;
+			scheduler?.stop();
+			scheduler = null;
+			isPlaying = false;
+			start();
+		});
 	});
 
 	function regenerate() {
