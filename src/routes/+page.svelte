@@ -6,6 +6,7 @@
 	import { randomSeed } from '$lib/rng/seeded';
 	import { Scheduler } from '$lib/audio/scheduler';
 	import { oscillatorSynth, type Synth } from '$lib/audio/synth';
+	import { createSoundFontSynth } from '$lib/audio/soundfont-synth';
 	import { encodeShare, type RhythmInstrument } from '$lib/state/share';
 	import type { NoteLength, MetronomeDivision } from '$lib/rhythm/types';
 	import { browser } from '$app/environment';
@@ -37,6 +38,8 @@
 	let synth: Synth | null = null;
 	let rhythmAudio = $state(false);
 	let isPlaying = $state(false);
+	let soundFontStatus = $state<'none' | 'loading' | 'loaded' | 'error'>('none');
+	let soundFontName = $state<string>('');
 
 	const rhythm = $derived(
 		generateRhythm({
@@ -86,6 +89,30 @@
 	function setInstrument(inst: RhythmInstrument) {
 		settings.rhythmInstrument = inst;
 		synth?.setInstrument(inst);
+	}
+
+	async function loadSoundFont(file: File) {
+		if (!browser) return;
+		soundFontStatus = 'loading';
+		soundFontName = file.name;
+		try {
+			audioCtx ??= new AudioContext();
+			const buf = await file.arrayBuffer();
+			const next = await createSoundFontSynth({ ctx: audioCtx, soundFontBuffer: buf });
+			next.setInstrument(settings.rhythmInstrument);
+			synth?.destroy();
+			synth = next;
+			soundFontStatus = 'loaded';
+		} catch (err) {
+			console.error(err);
+			soundFontStatus = 'error';
+		}
+	}
+
+	function onSoundFontFile(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (file) loadSoundFont(file);
 	}
 
 	function stop() {
@@ -183,6 +210,26 @@
 					onclick={() => setInstrument('bass')}>Bass</button
 				>
 			</div>
+		</div>
+		<div class="settings-row">
+			<span class="group-label">SoundFont</span>
+			<label class="file-button">
+				<input
+					type="file"
+					accept=".sf2,.sf3,.dls"
+					onchange={onSoundFontFile}
+				/>
+				<span>Load .sf2 / .sf3</span>
+			</label>
+			{#if soundFontStatus === 'loading'}
+				<span class="status">Loading {soundFontName}…</span>
+			{:else if soundFontStatus === 'loaded'}
+				<span class="status ok">✓ {soundFontName}</span>
+			{:else if soundFontStatus === 'error'}
+				<span class="status err">Failed to load</span>
+			{:else}
+				<span class="status muted">Using synthesised fallback</span>
+			{/if}
 		</div>
 	</section>
 
@@ -292,5 +339,35 @@
 	.glyph {
 		font-family: 'Noto Music', 'Bravura Text', 'DejaVu Serif', serif;
 		font-size: 1.2rem;
+	}
+	.file-button {
+		display: inline-flex;
+		align-items: center;
+	}
+	.file-button input[type='file'] {
+		display: none;
+	}
+	.file-button span {
+		background: var(--panel-2);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: 0.4rem 0.8rem;
+		cursor: pointer;
+	}
+	.file-button:hover span {
+		background: #262e4d;
+	}
+	.status {
+		font-size: 0.85rem;
+		color: var(--text);
+	}
+	.status.muted {
+		color: var(--muted);
+	}
+	.status.ok {
+		color: #6dd3a3;
+	}
+	.status.err {
+		color: var(--danger);
 	}
 </style>

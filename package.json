@@ -25,6 +25,7 @@
 		"vitest": "^4.1.4"
 	},
 	"dependencies": {
+		"spessasynth_lib": "^4.2.15",
 		"vexflow": "^5.0.0"
 	}
 }
