@@ -95,14 +95,24 @@ export function renderRhythm(
 
 	const flatNotes: StaveNote[] = [];
 	const flatIndexMap: number[] = [];
+	// Beams and tuplets must be constructed BEFORE the voice is drawn so each
+	// note knows it is beamed and skips rendering its own flag.
+	const perBarBeams: Beam[][] = [];
+	const perBarTuplets: Tuplet[][] = [];
 	slices.forEach((slice, barIndex) => {
 		const staveNotes = noteMatrix[barIndex];
-		const notesWidth = staveWidths[barIndex] - (barIndex === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS);
+		perBarBeams.push(buildBeams(slice.events, staveNotes));
+		perBarTuplets.push(buildTuplets(slice.events, staveNotes));
+	});
+	slices.forEach((slice, barIndex) => {
+		const staveNotes = noteMatrix[barIndex];
+		const notesWidth =
+			staveWidths[barIndex] - (barIndex === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS);
 		formatters[barIndex].format([voices[barIndex]], notesWidth);
 		voices[barIndex].draw(ctx, staves[barIndex]);
 
-		buildBeams(slice.events, staveNotes).forEach((b) => b.setContext(ctx).draw());
-		buildTuplets(slice.events, staveNotes).forEach((t) => t.setContext(ctx).draw());
+		perBarBeams[barIndex].forEach((b) => b.setContext(ctx).draw());
+		perBarTuplets[barIndex].forEach((t) => t.setContext(ctx).draw());
 
 		flatNotes.push(...staveNotes);
 		flatIndexMap.push(...slice.indexes);

@@ -15,6 +15,13 @@ const LENGTH_BY_SLOTS: Readonly<Record<1 | 2 | 3 | 4, BinaryLength>> = {
 	4: 'quarter'
 };
 
+// 1/12 of a beat; lets us track positions with only integer arithmetic across
+// binary subdivisions (3, 6, 9, 12, ...) and triplet eighths (4), so accumulated
+// triplet positions don't drift away from beat boundaries.
+const UNITS_PER_BEAT = 12;
+const UNITS_PER_SIXTEENTH = 3;
+const TRIPLET_UNITS = 4;
+
 type BinaryLength = Exclude<NoteLength, 'eighth-triplet'>;
 
 const BINARY_LENGTHS_SET = new Set<NoteLength>([
@@ -77,27 +84,28 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
  */
 function splitAtBeatBoundaries(events: RhythmEvent[]): RhythmEvent[] {
 	const out: RhythmEvent[] = [];
-	let pos = 0; // in sixteenth-equivalent slots; triplets advance by 4/3
+	let posUnits = 0; // integer 1/12-of-a-beat units
 	for (const e of events) {
 		if (e.kind === 'triplet') {
 			out.push(e);
-			pos += 4 / 3;
+			posUnits += TRIPLET_UNITS;
 			continue;
 		}
-		let remaining = e.durationSlots;
-		while (remaining > 0) {
-			const slotsLeftInBeat = SLOTS_PER_BEAT - (pos % SLOTS_PER_BEAT);
-			const take = Math.min(remaining, slotsLeftInBeat) as 1 | 2 | 3 | 4;
-			const isFinalPiece = remaining === take;
+		let remainingUnits = e.durationSlots * UNITS_PER_SIXTEENTH;
+		while (remainingUnits > 0) {
+			const unitsLeftInBeat = UNITS_PER_BEAT - (posUnits % UNITS_PER_BEAT);
+			const takeUnits = Math.min(remainingUnits, unitsLeftInBeat);
+			const takeSlots = (takeUnits / UNITS_PER_SIXTEENTH) as 1 | 2 | 3 | 4;
+			const isFinalPiece = remainingUnits === takeUnits;
 			out.push({
 				kind: 'binary',
-				length: LENGTH_BY_SLOTS[take],
-				durationSlots: take,
+				length: LENGTH_BY_SLOTS[takeSlots],
+				durationSlots: takeSlots,
 				isRest: e.isRest,
 				tiedToNext: e.isRest ? false : !isFinalPiece || e.tiedToNext
 			});
-			pos += take;
-			remaining -= take;
+			posUnits += takeUnits;
+			remainingUnits -= takeUnits;
 		}
 	}
 	return out;
