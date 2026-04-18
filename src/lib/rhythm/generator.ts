@@ -46,6 +46,7 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 	const binary = pickAllowedBinary(options.allowedLengths);
 	const tripletAllowed = options.allowedLengths.includes('eighth-triplet');
 	const binaryExplicitlyAllowed = options.allowedLengths.some((l) => BINARY_LENGTHS_SET.has(l));
+	const canFill = buildCanFillTable(binary, totalSlots);
 
 	const events: RhythmEvent[] = [];
 	let position = 0; // consumed binary slots from the start of the piece
@@ -60,8 +61,12 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 			continue;
 		}
 
-		const candidates = binary.filter((l) => BINARY_SLOTS[l] <= remaining);
-		const length = candidates.length > 0 ? pickOne(rng, candidates) : forceFit(remaining);
+		// When ties are disallowed, never pick a duration that would cross the
+		// next beat boundary — otherwise splitAtBeatBoundaries would need to
+		// introduce ties to keep the notation readable.
+		const slotsLeftInBeat = SLOTS_PER_BEAT - (position % SLOTS_PER_BEAT);
+		const maxSlots = options.allowTies ? remaining : Math.min(remaining, slotsLeftInBeat);
+		const length = pickFillingLength(rng, binary, maxSlots, canFill);
 		const slots = BINARY_SLOTS[length];
 		events.push({
 			kind: 'binary',
@@ -152,9 +157,47 @@ function pickOne<T>(rng: Rng, items: T[]): T {
 	return items[Math.floor(rng() * items.length)];
 }
 
-function forceFit(remaining: number): BinaryLength {
-	const entries = Object.entries(BINARY_SLOTS) as Array<[BinaryLength, number]>;
-	const fitting = entries.filter(([, slots]) => slots <= remaining);
-	fitting.sort((a, b) => b[1] - a[1]);
-	return fitting[0]?.[0] ?? 'sixteenth';
+/**
+ * canFill[t] = can `t` remaining slots be completely filled using only the
+ * allowed binary lengths? Lets the picker stay inside the allowed set instead
+ * of falling back to a length the user never selected.
+ */
+function buildCanFillTable(binary: BinaryLength[], maxSlots: number): boolean[] {
+	const dp = new Array(maxSlots + 1).fill(false);
+	dp[0] = true;
+	for (let t = 1; t <= maxSlots; t++) {
+		for (const l of binary) {
+			const s = BINARY_SLOTS[l];
+			if (s <= t && dp[t - s]) {
+				dp[t] = true;
+				break;
+			}
+		}
+	}
+	return dp;
+}
+
+function pickFillingLength(
+	rng: Rng,
+	binary: BinaryLength[],
+	maxSlots: number,
+	canFill: boolean[]
+): BinaryLength {
+	// Keep only the durations that fit AND leave a fillable remainder.
+	const candidates = binary.filter((l) => {
+		const s = BINARY_SLOTS[l];
+		return s <= maxSlots && (canFill[maxSlots - s] ?? false);
+	});
+	if (candidates.length > 0) return pickOne(rng, candidates);
+
+	// No clean pick — this means the allowed set can't tile what's left (e.g.
+	// only quarter allowed but we're mid-beat with 2 slots remaining). Fall
+	// back to the largest allowed length that at least fits, accepting a less
+	// elegant outcome rather than a crash.
+	const fitting = binary.filter((l) => BINARY_SLOTS[l] <= maxSlots);
+	if (fitting.length > 0) {
+		fitting.sort((a, b) => BINARY_SLOTS[b] - BINARY_SLOTS[a]);
+		return fitting[0];
+	}
+	return 'sixteenth';
 }

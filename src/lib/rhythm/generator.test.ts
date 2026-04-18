@@ -229,20 +229,16 @@ describe('beat-boundary splitting', () => {
 		}
 	});
 
-	it('ties non-rest pieces that used to be one cross-beat note', () => {
-		// A dotted-quarter (6 slots) starting at slot 2 of beat 1 crosses into beat 2.
-		// To force this shape, use a minimal allowed set and a seed we sanity-check.
+	it('ties non-rest pieces that used to be one cross-beat note (when allowTies=true)', () => {
 		let sawTiedSplit = false;
 		for (let seed = 0; seed < 200; seed++) {
 			const { events } = generateRhythm({
 				bars: 1,
 				allowedLengths: ['eighth', 'dotted-quarter'],
 				allowRests: false,
-				allowTies: false,
+				allowTies: true,
 				seed
 			});
-			// Any dotted-quarter starting off-beat must have been split; look for a pair
-			// of non-rest adjacent events where the first is tied.
 			for (let i = 0; i < events.length - 1; i++) {
 				if (events[i].tiedToNext && !events[i].isRest && !events[i + 1].isRest) {
 					sawTiedSplit = true;
@@ -250,6 +246,64 @@ describe('beat-boundary splitting', () => {
 			}
 		}
 		expect(sawTiedSplit).toBe(true);
+	});
+});
+
+describe('allowed-set fidelity', () => {
+	it('never emits a length the user did not select', () => {
+		const allowed: NoteLength[] = ['quarter', 'eighth'];
+		for (let seed = 0; seed < 500; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: allowed,
+				allowRests: true,
+				allowTies: true,
+				seed
+			});
+			for (const e of events) {
+				expect(allowed).toContain(e.length);
+			}
+		}
+	});
+
+	it('respects the set even when the choices force a specific partition', () => {
+		// Only quarter and 16th allowed — every beat must be either [quarter]
+		// or [16th, 16th, 16th, 16th]. Never a lone 16th at the end of a beat.
+		const allowed: NoteLength[] = ['quarter', 'sixteenth'];
+		for (let seed = 0; seed < 500; seed++) {
+			const { events } = generateRhythm({
+				bars: 1,
+				allowedLengths: allowed,
+				allowRests: false,
+				allowTies: false,
+				seed
+			});
+			for (const e of events) expect(allowed).toContain(e.length);
+		}
+	});
+});
+
+describe('allowTies=false', () => {
+	it('never produces a tied note', () => {
+		for (let seed = 0; seed < 500; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: [
+					'whole',
+					'half',
+					'quarter',
+					'eighth',
+					'sixteenth',
+					'dotted-half',
+					'dotted-quarter',
+					'dotted-eighth'
+				],
+				allowRests: true,
+				allowTies: false,
+				seed
+			});
+			expect(events.some((e) => e.tiedToNext)).toBe(false);
+		}
 	});
 });
 
