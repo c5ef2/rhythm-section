@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { generateRhythm } from './generator';
 import { BINARY_SLOTS } from './types';
-import type { NoteLength } from './types';
+import type { NoteLength, RhythmEvent } from './types';
 
-function totalSlots(events: ReturnType<typeof generateRhythm>['events']): number {
-	return events
-		.filter((e) => e.kind === 'binary')
-		.reduce((sum, e) => sum + e.durationSlots, 0);
+function binarySlots(events: RhythmEvent[]): number {
+	return events.filter((e) => e.kind === 'binary').reduce((s, e) => s + e.durationSlots, 0);
+}
+
+function tripletBeats(events: RhythmEvent[]): number {
+	const tripletEvents = events.filter((e) => e.kind === 'triplet');
+	// Each triplet beat contributes 3 triplet-eighth events.
+	return tripletEvents.length / 3;
+}
+
+function totalBeats(events: RhythmEvent[]): number {
+	return binarySlots(events) / 4 + tripletBeats(events);
+}
+
+function totalSlots(events: RhythmEvent[]): number {
+	return binarySlots(events);
 }
 
 describe('generateRhythm (binary)', () => {
@@ -120,3 +132,103 @@ describe('generateRhythm (binary)', () => {
 		}
 	});
 });
+
+describe('generateRhythm (triplets)', () => {
+	it('emits only triplets when only triplet is allowed', () => {
+		const { events } = generateRhythm({
+			bars: 1,
+			allowedLengths: ['eighth-triplet'],
+			allowRests: false,
+			allowTies: false,
+			seed: 3
+		});
+		for (const e of events) {
+			expect(e.kind).toBe('triplet');
+			expect(e.length).toBe('eighth-triplet');
+			expect(e.durationSlots).toBe(1);
+		}
+		// One bar = 4 beats × 3 triplet-eighths = 12 events
+		expect(events.length).toBe(12);
+	});
+
+	it('fills exactly 4 beats per bar when mixing binary and triplet', () => {
+		const mixed: NoteLength[] = ['eighth', 'sixteenth', 'eighth-triplet'];
+		for (let seed = 0; seed < 50; seed++) {
+			const { events } = generateRhythm({
+				bars: 1,
+				allowedLengths: mixed,
+				allowRests: false,
+				allowTies: false,
+				seed
+			});
+			expect(totalBeats(events)).toBe(4);
+		}
+	});
+
+	it('sometimes chooses triplet when both binary and triplet are allowed', () => {
+		let sawTriplet = false;
+		for (let seed = 0; seed < 50; seed++) {
+			const { events } = generateRhythm({
+				bars: 1,
+				allowedLengths: ['eighth', 'sixteenth', 'eighth-triplet'],
+				allowRests: false,
+				allowTies: false,
+				seed
+			});
+			if (events.some((e) => e.kind === 'triplet')) sawTriplet = true;
+		}
+		expect(sawTriplet).toBe(true);
+	});
+
+	it('triplet events appear in groups of three (one per beat)', () => {
+		for (let seed = 0; seed < 30; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: ['eighth', 'eighth-triplet'],
+				allowRests: false,
+				allowTies: false,
+				seed
+			});
+			// Triplet count must be a multiple of 3.
+			const trips = events.filter((e) => e.kind === 'triplet').length;
+			expect(trips % 3).toBe(0);
+		}
+	});
+});
+
+describe('generateRhythm (ties)', () => {
+	it('produces at least one tied note across many seeds when allowTies=true', () => {
+		let sawTie = false;
+		for (let seed = 0; seed < 200; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: ['eighth', 'sixteenth', 'quarter'],
+				allowRests: false,
+				allowTies: true,
+				seed
+			});
+			if (events.some((e) => e.tiedToNext)) sawTie = true;
+		}
+		expect(sawTie).toBe(true);
+	});
+
+	it('never ties a rest or a last event', () => {
+		for (let seed = 0; seed < 50; seed++) {
+			const { events } = generateRhythm({
+				bars: 1,
+				allowedLengths: ['eighth', 'sixteenth', 'quarter'],
+				allowRests: true,
+				allowTies: true,
+				seed
+			});
+			events.forEach((e, i) => {
+				if (e.tiedToNext) {
+					expect(e.isRest).toBe(false);
+					expect(i).toBeLessThan(events.length - 1);
+					expect(events[i + 1].isRest).toBe(false);
+				}
+			});
+		}
+	});
+});
+

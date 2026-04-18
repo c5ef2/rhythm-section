@@ -3,9 +3,14 @@ import { BINARY_SLOTS } from './types';
 import type { GeneratorOptions, NoteLength, RhythmEvent } from './types';
 
 const REST_PROBABILITY = 0.2;
+const TIE_PROBABILITY = 0.15;
+const TRIPLET_WEIGHT_WHEN_MIXED = 0.3;
 const SLOTS_PER_BAR = 16;
+const SLOTS_PER_BEAT = 4;
 
-const BINARY_LENGTHS = new Set<NoteLength>([
+type BinaryLength = Exclude<NoteLength, 'eighth-triplet'>;
+
+const BINARY_LENGTHS_SET = new Set<NoteLength>([
 	'whole',
 	'half',
 	'quarter',
@@ -24,13 +29,24 @@ export interface GeneratedRhythm {
 export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 	const rng = mulberry32(options.seed);
 	const totalSlots = SLOTS_PER_BAR * options.bars;
-	const allowed = pickAllowedBinary(options.allowedLengths);
+	const binary = pickAllowedBinary(options.allowedLengths);
+	const tripletAllowed = options.allowedLengths.includes('eighth-triplet');
+	const binaryExplicitlyAllowed = options.allowedLengths.some((l) => BINARY_LENGTHS_SET.has(l));
 
 	const events: RhythmEvent[] = [];
-	let remaining = totalSlots;
+	let position = 0; // consumed binary slots from the start of the piece
 
-	while (remaining > 0) {
-		const candidates = allowed.filter((l) => BINARY_SLOTS[l] <= remaining);
+	while (position < totalSlots) {
+		const remaining = totalSlots - position;
+		const atBeatBoundary = position % SLOTS_PER_BEAT === 0 && remaining >= SLOTS_PER_BEAT;
+
+		if (atBeatBoundary && shouldPickTriplet(rng, tripletAllowed, binaryExplicitlyAllowed)) {
+			emitTripletBeat(events, rng, options.allowRests);
+			position += SLOTS_PER_BEAT;
+			continue;
+		}
+
+		const candidates = binary.filter((l) => BINARY_SLOTS[l] <= remaining);
 		const length = candidates.length > 0 ? pickOne(rng, candidates) : forceFit(remaining);
 		const slots = BINARY_SLOTS[length];
 		events.push({
@@ -40,18 +56,47 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 			isRest: options.allowRests && rng() < REST_PROBABILITY,
 			tiedToNext: false
 		});
-		remaining -= slots;
+		position += slots;
 	}
 
+	if (options.allowTies) applyTiePass(events, rng);
 	return { events, seed: options.seed };
 }
 
-function pickAllowedBinary(
-	requested: NoteLength[]
-): Array<Exclude<NoteLength, 'eighth-triplet'>> {
-	const binary = requested.filter((l) => BINARY_LENGTHS.has(l)) as Array<
-		Exclude<NoteLength, 'eighth-triplet'>
-	>;
+function shouldPickTriplet(
+	rng: Rng,
+	tripletAllowed: boolean,
+	binaryExplicitlyAllowed: boolean
+): boolean {
+	if (!tripletAllowed) return false;
+	if (!binaryExplicitlyAllowed) return true;
+	return rng() < TRIPLET_WEIGHT_WHEN_MIXED;
+}
+
+function emitTripletBeat(events: RhythmEvent[], rng: Rng, allowRests: boolean): void {
+	for (let i = 0; i < 3; i++) {
+		events.push({
+			kind: 'triplet',
+			length: 'eighth-triplet',
+			durationSlots: 1,
+			isRest: allowRests && rng() < REST_PROBABILITY,
+			tiedToNext: false
+		});
+	}
+}
+
+function applyTiePass(events: RhythmEvent[], rng: Rng): void {
+	for (let i = 0; i < events.length - 1; i++) {
+		const a = events[i];
+		const b = events[i + 1];
+		if (a.isRest || b.isRest) continue;
+		if (a.kind !== b.kind) continue;
+		if (rng() < TIE_PROBABILITY) a.tiedToNext = true;
+	}
+}
+
+function pickAllowedBinary(requested: NoteLength[]): BinaryLength[] {
+	const binary = requested.filter((l) => BINARY_LENGTHS_SET.has(l)) as BinaryLength[];
 	return binary.length > 0 ? binary : ['quarter'];
 }
 
@@ -59,12 +104,8 @@ function pickOne<T>(rng: Rng, items: T[]): T {
 	return items[Math.floor(rng() * items.length)];
 }
 
-function forceFit(remaining: number): Exclude<NoteLength, 'eighth-triplet'> {
-	// Reached by corner case: nothing in allowed set fits. Pick the largest
-	// binary length that does.
-	const entries = Object.entries(BINARY_SLOTS) as Array<
-		[Exclude<NoteLength, 'eighth-triplet'>, number]
-	>;
+function forceFit(remaining: number): BinaryLength {
+	const entries = Object.entries(BINARY_SLOTS) as Array<[BinaryLength, number]>;
 	const fitting = entries.filter(([, slots]) => slots <= remaining);
 	fitting.sort((a, b) => b[1] - a[1]);
 	return fitting[0]?.[0] ?? 'sixteenth';
