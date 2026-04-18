@@ -55,14 +55,14 @@ function kick(ctx: AudioContext, time: number): void {
 	const osc = ctx.createOscillator();
 	const gain = ctx.createGain();
 	osc.type = 'sine';
-	osc.frequency.setValueAtTime(140, time);
-	osc.frequency.exponentialRampToValueAtTime(40, time + 0.12);
+	osc.frequency.setValueAtTime(160, time);
+	osc.frequency.exponentialRampToValueAtTime(55, time + 0.05);
 	gain.gain.setValueAtTime(0.0001, time);
-	gain.gain.exponentialRampToValueAtTime(0.9, time + 0.005);
-	gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.25);
+	gain.gain.exponentialRampToValueAtTime(0.7, time + 0.003);
+	gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.11);
 	osc.connect(gain).connect(ctx.destination);
 	osc.start(time);
-	osc.stop(time + 0.3);
+	osc.stop(time + 0.13);
 }
 
 function bass(ctx: AudioContext, time: number, durationSec: number): void {

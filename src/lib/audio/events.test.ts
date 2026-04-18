@@ -79,6 +79,28 @@ describe('buildEventList', () => {
 		expect(hits.length).toBe(4); // the 8th rest is skipped
 	});
 
+	it('drum hits only once per tied group, regardless of length', () => {
+		// Tied sequence of 3 events (e.g. from a cross-beat split of a dotted-half):
+		// eighth --tie-- quarter --tie-- eighth
+		const list = buildEventList({
+			events: [
+				{ kind: 'binary', length: 'eighth', durationSlots: 2, isRest: false, tiedToNext: true },
+				{ kind: 'binary', length: 'quarter', durationSlots: 4, isRest: false, tiedToNext: true },
+				{ kind: 'binary', length: 'eighth', durationSlots: 2, isRest: false, tiedToNext: false },
+				{ kind: 'binary', length: 'quarter', durationSlots: 4, isRest: false, tiedToNext: false }
+			],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: { enabled: false, division: 'quarter', emphasizeFirstBeat: false },
+			rhythmAudio: true
+		});
+		const hits = list.filter((e): e is Extract<AudioEvent, { type: 'rhythm' }> => e.type === 'rhythm');
+		expect(hits.length).toBe(2);
+		// First hit sustains for 8th + quarter + 8th = one full beat + two 8ths = 2 beats = 2s @60bpm
+		expect(hits[0].durationSec).toBeCloseTo(2);
+	});
+
 	it('skips rhythm hits for tied continuations', () => {
 		const list = buildEventList({
 			events: [eighth({ tiedToNext: true }), eighth(), quarter()],

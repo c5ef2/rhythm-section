@@ -22,12 +22,20 @@ export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> 
 	onComplete?: () => void;
 }
 
+interface HighlightMark {
+	time: number;
+	index: number;
+}
+
 export class Scheduler {
 	private ctx: AudioContext;
 	private cfg: SchedulerConfig;
 	private events: AudioEvent[] = [];
+	private highlights: HighlightMark[] = [];
 	private nextEventIdx = 0;
 	private timer: number | null = null;
+	private rafHandle: number | null = null;
+	private lastActive: number | null = null;
 	private running = false;
 
 	constructor(config: SchedulerConfig) {
@@ -39,18 +47,10 @@ export class Scheduler {
 		if (this.running) return;
 		this.running = true;
 		const startTime = this.ctx.currentTime + 0.05;
-		this.events = buildEventList({
-			events: this.cfg.events,
-			bars: this.cfg.bars,
-			bpm: this.cfg.bpm,
-			startTime,
-			metronome: this.cfg.metronome,
-			rhythmAudio: this.cfg.rhythmAudio,
-			countInBars: this.cfg.countInBars
-		});
-		this.nextEventIdx = 0;
+		this.prime(startTime, this.cfg.countInBars);
 		this.tick();
 		this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
+		this.rafHandle = requestAnimationFrame(() => this.highlightFrame());
 	}
 
 	stop(): void {
@@ -59,11 +59,32 @@ export class Scheduler {
 			window.clearInterval(this.timer);
 			this.timer = null;
 		}
+		if (this.rafHandle !== null) {
+			cancelAnimationFrame(this.rafHandle);
+			this.rafHandle = null;
+		}
+		this.lastActive = null;
 		this.cfg.onHighlight(null);
 	}
 
 	get isRunning(): boolean {
 		return this.running;
+	}
+
+	private prime(startTime: number, countInBars: number | undefined): void {
+		this.events = buildEventList({
+			events: this.cfg.events,
+			bars: this.cfg.bars,
+			bpm: this.cfg.bpm,
+			startTime,
+			metronome: this.cfg.metronome,
+			rhythmAudio: this.cfg.rhythmAudio,
+			countInBars
+		});
+		this.highlights = this.events
+			.filter((e): e is Extract<AudioEvent, { type: 'highlight' }> => e.type === 'highlight')
+			.map((e) => ({ time: e.time, index: e.rhythmEventIndex }));
+		this.nextEventIdx = 0;
 	}
 
 	private tick(): void {
@@ -91,17 +112,7 @@ export class Scheduler {
 	private restartSeamless(): void {
 		const last = this.events[this.events.length - 1];
 		const nextStart = last ? last.time + 0.001 : this.ctx.currentTime + 0.05;
-		this.events = buildEventList({
-			events: this.cfg.events,
-			bars: this.cfg.bars,
-			bpm: this.cfg.bpm,
-			startTime: nextStart,
-			metronome: this.cfg.metronome,
-			rhythmAudio: this.cfg.rhythmAudio,
-			// Count-in only on the very first playthrough.
-			countInBars: 0
-		});
-		this.nextEventIdx = 0;
+		this.prime(nextStart, 0);
 	}
 
 	private dispatch(e: AudioEvent): void {
@@ -113,15 +124,23 @@ export class Scheduler {
 				this.cfg.rhythm?.playRhythm(e.time, e.durationSec);
 				break;
 			case 'highlight':
-				this.scheduleHighlight(e.time, e.rhythmEventIndex);
+				// Handled by the rAF loop reading ctx.currentTime directly.
 				break;
 		}
 	}
 
-	private scheduleHighlight(time: number, index: number): void {
-		const delay = Math.max(0, (time - this.ctx.currentTime) * 1000);
-		window.setTimeout(() => {
-			if (this.running) this.cfg.onHighlight(index);
-		}, delay);
+	private highlightFrame(): void {
+		if (!this.running) return;
+		const now = this.ctx.currentTime;
+		let active: number | null = null;
+		for (const m of this.highlights) {
+			if (m.time <= now) active = m.index;
+			else break;
+		}
+		if (active !== this.lastActive) {
+			this.lastActive = active;
+			this.cfg.onHighlight(active);
+		}
+		this.rafHandle = requestAnimationFrame(() => this.highlightFrame());
 	}
 }
