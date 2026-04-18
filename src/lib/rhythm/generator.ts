@@ -3,7 +3,7 @@ import { BINARY_SLOTS } from './types';
 import type { GeneratorOptions, NoteLength, RhythmEvent } from './types';
 
 const REST_PROBABILITY = 0.2;
-const TIE_PROBABILITY = 0.15;
+const LONG_CHAIN_CHANCE = 0.05; // 5% of picks may produce a 3-note tied chain
 const TRIPLET_WEIGHT_WHEN_MIXED = 0.3;
 const SLOTS_PER_BAR = 16;
 const SLOTS_PER_BEAT = 4;
@@ -66,7 +66,10 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 		// introduce ties to keep the notation readable.
 		const slotsLeftInBeat = SLOTS_PER_BEAT - (position % SLOTS_PER_BEAT);
 		const maxSlots = options.allowTies ? remaining : Math.min(remaining, slotsLeftInBeat);
-		const length = pickFillingLength(rng, binary, maxSlots, canFill);
+		// 95 % of picks must stay inside a 2-piece chain (one tie); 5 % can go
+		// to 3 pieces (two ties). Never 4+.
+		const maxChain = options.allowTies ? (rng() < LONG_CHAIN_CHANCE ? 3 : 2) : 1;
+		const length = pickFillingLength(rng, binary, maxSlots, canFill, position, maxChain);
 		const slots = BINARY_SLOTS[length];
 		events.push({
 			kind: 'binary',
@@ -78,7 +81,6 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 		position += slots;
 	}
 
-	if (options.allowTies) applyTiePass(events, rng);
 	return { events: splitAtBeatBoundaries(events), seed: options.seed };
 }
 
@@ -138,16 +140,6 @@ function emitTripletBeat(events: RhythmEvent[], rng: Rng, allowRests: boolean): 
 	}
 }
 
-function applyTiePass(events: RhythmEvent[], rng: Rng): void {
-	for (let i = 0; i < events.length - 1; i++) {
-		const a = events[i];
-		const b = events[i + 1];
-		if (a.isRest || b.isRest) continue;
-		if (a.kind !== b.kind) continue;
-		if (rng() < TIE_PROBABILITY) a.tiedToNext = true;
-	}
-}
-
 function pickAllowedBinary(requested: NoteLength[]): BinaryLength[] {
 	const binary = requested.filter((l) => BINARY_LENGTHS_SET.has(l)) as BinaryLength[];
 	return binary.length > 0 ? binary : ['quarter'];
@@ -181,23 +173,38 @@ function pickFillingLength(
 	rng: Rng,
 	binary: BinaryLength[],
 	maxSlots: number,
-	canFill: boolean[]
+	canFill: boolean[],
+	position: number,
+	maxChainPieces: number
 ): BinaryLength {
-	// Keep only the durations that fit AND leave a fillable remainder.
+	// Keep only the durations that fit, leave a fillable remainder, and stay
+	// under the chain-length cap when split at beat boundaries.
+	const withinChain = (slots: number) => beatsSpanning(position, slots) <= maxChainPieces;
 	const candidates = binary.filter((l) => {
 		const s = BINARY_SLOTS[l];
-		return s <= maxSlots && (canFill[maxSlots - s] ?? false);
+		return s <= maxSlots && (canFill[maxSlots - s] ?? false) && withinChain(s);
 	});
 	if (candidates.length > 0) return pickOne(rng, candidates);
 
-	// No clean pick — this means the allowed set can't tile what's left (e.g.
-	// only quarter allowed but we're mid-beat with 2 slots remaining). Fall
-	// back to the largest allowed length that at least fits, accepting a less
-	// elegant outcome rather than a crash.
+	// Relax the chain cap before giving up (pathological allowed sets).
+	const relaxedCandidates = binary.filter((l) => {
+		const s = BINARY_SLOTS[l];
+		return s <= maxSlots && (canFill[maxSlots - s] ?? false);
+	});
+	if (relaxedCandidates.length > 0) return pickOne(rng, relaxedCandidates);
+
+	// Last resort: largest length that at least fits.
 	const fitting = binary.filter((l) => BINARY_SLOTS[l] <= maxSlots);
 	if (fitting.length > 0) {
 		fitting.sort((a, b) => BINARY_SLOTS[b] - BINARY_SLOTS[a]);
 		return fitting[0];
 	}
 	return 'sixteenth';
+}
+
+function beatsSpanning(position: number, duration: number): number {
+	if (duration <= 0) return 0;
+	const startBeat = Math.floor(position / SLOTS_PER_BEAT);
+	const endBeat = Math.floor((position + duration - 1) / SLOTS_PER_BEAT);
+	return endBeat - startBeat + 1;
 }

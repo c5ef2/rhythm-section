@@ -351,7 +351,13 @@
 	.group button {
 		background: transparent;
 		border: 1px solid transparent;
+		color: var(--text);
 		padding: 0.35rem 0.65rem;
+	}
+	.group button[aria-pressed='true'] {
+		background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+		color: #0b1024;
+		border-color: transparent;
 	}
 	.group-label {
 		color: var(--muted);

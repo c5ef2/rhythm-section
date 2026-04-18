@@ -118,6 +118,8 @@ export function renderRhythm(
 		perBarTuplets.push(buildTuplets(slice.events, staveNotes));
 	});
 	const firstOnRowSet = new Set<number>(rows.map((row) => row[0]));
+	const barToRow = new Map<number, number>();
+	rows.forEach((row, rowIdx) => row.forEach((barIdx) => barToRow.set(barIdx, rowIdx)));
 	slices.forEach((slice, barIndex) => {
 		const staveNotes = noteMatrix[barIndex];
 		const modifier = firstOnRowSet.has(barIndex) ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
@@ -132,9 +134,12 @@ export function renderRhythm(
 		flatIndexMap.push(...slice.indexes);
 	});
 
-	// Cross-bar ties (if an event's tiedToNext is true and its next event lives
-	// in the following bar, StaveTie still works across different staves).
-	buildFlatTies(events, flatNotes, flatIndexMap).forEach((t) => t.setContext(ctx).draw());
+	// Ties: within a row a normal StaveTie spans the two notes; across rows we
+	// draw two "half-ties" (one trailing off the previous row, one leading into
+	// the next row) so there's no weird diagonal line between stacked bars.
+	buildFlatTies(events, flatNotes, flatIndexMap, slices, barToRow).forEach((t) =>
+		t.setContext(ctx).draw()
+	);
 
 	const noteElements: SVGElement[] = [];
 	flatIndexMap.forEach((originalIndex, flatIdx) => {
@@ -239,48 +244,62 @@ function isBeamable(e: RhythmEvent): boolean {
 }
 
 /**
- * Split the bar into contiguous runs of beamable notes of the same kind, then
- * let VexFlow auto-beam each run:
- * - Binary runs use generateBeams with beat grouping so mixed note lengths
- *   (e.g. dotted-8th + 16th) get a full primary beam and a correct partial
- *   secondary beam.
- * - Triplet runs are grouped into consecutive triplet-beats (3 notes each).
+ * Beam notes so each beat is visually self-contained. We walk the bar a beat
+ * at a time (using the absolute 1/12-of-a-beat unit position), collect the
+ * beamable runs within each beat, then let VexFlow produce the beams for
+ * that single beat. This is the only way to get clean "one beam per beat"
+ * output when a beat starts with a rest — generateBeams by itself would
+ * otherwise group notes from position zero and drift off the beat grid.
  */
 function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
 	const beams: Beam[] = [];
-	let run: { kind: 'binary' | 'triplet'; notes: StaveNote[] } | null = null;
+	let beatEvents: RhythmEvent[] = [];
+	let beatNotes: StaveNote[] = [];
+	let positionUnits = 0;
 
-	const flush = () => {
-		if (!run) return;
-		if (run.kind === 'triplet') {
-			for (let j = 0; j < run.notes.length; j += 3) {
-				const chunk = run.notes.slice(j, j + 3);
-				if (chunk.length >= 2) beams.push(new Beam(chunk));
+	const flushBeat = () => {
+		if (beatEvents.length === 0) return;
+		let run: { kind: 'binary' | 'triplet'; notes: StaveNote[] } | null = null;
+		const closeRun = () => {
+			if (!run) return;
+			if (run.kind === 'triplet') {
+				if (run.notes.length >= 2) beams.push(new Beam(run.notes));
+			} else if (run.notes.length >= 2) {
+				// Every binary run in this array totals at most one beat, so a
+				// single 1/4 group covers them; generateBeams still produces
+				// partial secondary beams for mixed durations (8 + 16).
+				beams.push(
+					...Beam.generateBeams(run.notes, {
+						groups: [new Fraction(1, 4)],
+						beamRests: false
+					})
+				);
 			}
-		} else {
-			beams.push(
-				...Beam.generateBeams(run.notes, {
-					groups: [new Fraction(1, 4)],
-					beamRests: false
-				})
-			);
-		}
-		run = null;
+			run = null;
+		};
+		beatEvents.forEach((e, i) => {
+			if (!isBeamable(e)) {
+				closeRun();
+				return;
+			}
+			if (!run || run.kind !== e.kind) {
+				closeRun();
+				run = { kind: e.kind, notes: [] };
+			}
+			run.notes.push(beatNotes[i]);
+		});
+		closeRun();
+		beatEvents = [];
+		beatNotes = [];
 	};
 
-	for (let i = 0; i < events.length; i++) {
-		const e = events[i];
-		if (!isBeamable(e)) {
-			flush();
-			continue;
-		}
-		if (!run || run.kind !== e.kind) {
-			flush();
-			run = { kind: e.kind, notes: [] };
-		}
-		run.notes.push(notes[i]);
-	}
-	flush();
+	events.forEach((e, i) => {
+		beatEvents.push(e);
+		beatNotes.push(notes[i]);
+		positionUnits += UNITS[e.length];
+		if (positionUnits % UNITS_PER_BEAT === 0) flushBeat();
+	});
+	flushBeat();
 	return beams;
 }
 
@@ -299,20 +318,32 @@ function buildTuplets(events: RhythmEvent[], notes: StaveNote[]): Tuplet[] {
 function buildFlatTies(
 	events: RhythmEvent[],
 	flatNotes: StaveNote[],
-	flatIndexMap: number[]
+	flatIndexMap: number[],
+	slices: BarSlice[],
+	barToRow: Map<number, number>
 ): StaveTie[] {
 	const ties: StaveTie[] = [];
-	// flatIndexMap[j] = original index, so flat position of original index `k`
-	// is the j for which flatIndexMap[j] === k. Since slices preserve order and
-	// every event appears exactly once, the map is a permutation whose inverse
-	// we compute once for quick lookup.
 	const originalToFlat: number[] = [];
 	flatIndexMap.forEach((orig, flat) => (originalToFlat[orig] = flat));
+
+	const originalToBar = new Map<number, number>();
+	slices.forEach((slice, barIdx) => slice.indexes.forEach((orig) => originalToBar.set(orig, barIdx)));
+
 	events.forEach((e, i) => {
 		if (!e.tiedToNext || i + 1 >= events.length) return;
 		const firstNote = flatNotes[originalToFlat[i]];
 		const lastNote = flatNotes[originalToFlat[i + 1]];
-		if (firstNote && lastNote) ties.push(new StaveTie({ firstNote, lastNote }));
+		if (!firstNote || !lastNote) return;
+		const rowA = barToRow.get(originalToBar.get(i) ?? -1);
+		const rowB = barToRow.get(originalToBar.get(i + 1) ?? -1);
+		if (rowA === rowB) {
+			ties.push(new StaveTie({ firstNote, lastNote }));
+		} else {
+			// Half-ties: firstNote only → curves off the right edge of its row;
+			// lastNote only → curves in from the left edge of the next row.
+			ties.push(new StaveTie({ firstNote, lastNote: null }));
+			ties.push(new StaveTie({ firstNote: null, lastNote }));
+		}
 	});
 	return ties;
 }

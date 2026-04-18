@@ -307,6 +307,65 @@ describe('allowTies=false', () => {
 	});
 });
 
+describe('tie chain cap', () => {
+	it('never produces a tied chain longer than 3 events', () => {
+		for (let seed = 0; seed < 500; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: [
+					'whole',
+					'dotted-half',
+					'half',
+					'dotted-quarter',
+					'quarter',
+					'eighth',
+					'sixteenth',
+					'dotted-eighth'
+				],
+				allowRests: false,
+				allowTies: true,
+				seed
+			});
+			let chain = 1;
+			for (let i = 0; i < events.length; i++) {
+				if (events[i].tiedToNext) chain++;
+				else {
+					expect(chain).toBeLessThanOrEqual(3);
+					chain = 1;
+				}
+			}
+			expect(chain).toBeLessThanOrEqual(3);
+		}
+	});
+
+	it('3-event chains (2 ties) stay under ~10% across many seeds', () => {
+		let totalChains = 0;
+		let longChains = 0;
+		for (let seed = 0; seed < 500; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: ['dotted-half', 'half', 'quarter', 'eighth', 'sixteenth'],
+				allowRests: false,
+				allowTies: true,
+				seed
+			});
+			let chain = 1;
+			for (let i = 0; i < events.length; i++) {
+				if (events[i].tiedToNext) chain++;
+				else {
+					if (chain >= 2) totalChains++;
+					if (chain >= 3) longChains++;
+					chain = 1;
+				}
+			}
+		}
+		// Loose upper bound — our target is 5%, leave head-room for variance.
+		if (totalChains > 0) {
+			expect(longChains / totalChains).toBeLessThan(0.15);
+		}
+	});
+});
+
 describe('generateRhythm (ties)', () => {
 	it('produces at least one tied note across many seeds when allowTies=true', () => {
 		let sawTie = false;
