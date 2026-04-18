@@ -1,0 +1,9 @@
+{
+  "name": "Claude Code Secure Sandbox",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "waitFor": "postStartCommand",
+  "remoteUser": "node"
+}

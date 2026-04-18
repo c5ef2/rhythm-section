@@ -1,0 +1,19 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ..:/workspace:cached
+      - claude-config:/home/node/.claude
+      - claude-history:/commandhistory
+    command: sleep infinity
+    ports:
+      - "8473:8473"
+
+volumes:
+  claude-config:
+  claude-history:
