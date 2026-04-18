@@ -249,10 +249,16 @@
 <style>
 	main {
 		max-width: 960px;
-		margin: 2rem auto 4rem;
-		padding: 0 1.25rem;
+		margin: 1.25rem auto 4rem;
+		padding: 0 1rem max(1rem, env(safe-area-inset-bottom));
 		display: grid;
 		gap: 1rem;
+	}
+	@supports (padding: max(0px)) {
+		main {
+			padding-left: max(1rem, env(safe-area-inset-left));
+			padding-right: max(1rem, env(safe-area-inset-right));
+		}
 	}
 	header h1 {
 		margin: 0 0 0.25rem;
@@ -381,5 +387,40 @@
 	}
 	.status.err {
 		color: var(--danger);
+	}
+
+	@media (max-width: 640px) {
+		header h1 {
+			font-size: 1.4rem;
+		}
+		.subtitle {
+			font-size: 0.9rem;
+		}
+		.transport {
+			gap: 0.5rem;
+		}
+		.transport .play {
+			flex: 1 1 100%;
+			order: -1;
+			min-height: 3rem;
+		}
+		.share {
+			margin-left: 0;
+			flex: 1 1 100%;
+		}
+		.bpm-stepper output {
+			min-width: 3rem;
+		}
+		.bpm-stepper button {
+			padding: 0.5rem 0.75rem;
+			min-height: 2.5rem;
+		}
+		.icon-btn {
+			width: 2.75rem;
+			height: 2.75rem;
+		}
+		:global(.rhythm-note-active) {
+			stroke-width: 1.5px;
+		}
 	}
 </style>

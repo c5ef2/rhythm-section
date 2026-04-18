@@ -2,6 +2,7 @@ import type { MetronomeOptions, RhythmEvent } from '../rhythm/types';
 import { Scheduler } from './scheduler';
 import { createSoundFontSynth } from './soundfont-synth';
 import { oscillatorSynth, type RhythmInstrument, type Synth } from './synth';
+import { WakeLock } from './wake-lock';
 
 export interface PlayInputs {
 	events: RhythmEvent[];
@@ -29,6 +30,7 @@ export class Player {
 	private ctx: AudioContext | null = null;
 	private synth: Synth | null = null;
 	private scheduler: Scheduler | null = null;
+	private wakeLock = new WakeLock();
 
 	constructor(private readonly callbacks: PlayerCallbacks) {}
 
@@ -63,14 +65,19 @@ export class Player {
 			countInBars: inputs.countInBars,
 			loop: inputs.loop,
 			onHighlight: (i) => this.callbacks.onActiveNote(i),
-			onComplete: () => this.callbacks.onStopped()
+			onComplete: () => {
+				this.wakeLock.release();
+				this.callbacks.onStopped();
+			}
 		});
 		this.scheduler.start();
+		this.wakeLock.acquire();
 	}
 
 	stop(): void {
 		this.scheduler?.stop();
 		this.scheduler = null;
+		this.wakeLock.release();
 		this.callbacks.onActiveNote(null);
 	}
 }
