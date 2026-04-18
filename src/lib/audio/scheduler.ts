@@ -37,6 +37,13 @@ export class Scheduler {
 	private rafHandle: number | null = null;
 	private lastActive: number | null = null;
 	private running = false;
+	/**
+	 * Audio-context time at which the CURRENT cycle ends (= startTime of the
+	 * next cycle when looping). Computed once per cycle so seamless loop
+	 * restarts land exactly on the downbeat instead of drifting forward based
+	 * on where the last scheduled event happened to be.
+	 */
+	private cycleEndTime = 0;
 
 	constructor(config: SchedulerConfig) {
 		this.ctx = config.ctx;
@@ -85,6 +92,9 @@ export class Scheduler {
 			.filter((e): e is Extract<AudioEvent, { type: 'highlight' }> => e.type === 'highlight')
 			.map((e) => ({ time: e.time, index: e.rhythmEventIndex }));
 		this.nextEventIdx = 0;
+		const secPerBar = (60 / this.cfg.bpm) * 4;
+		const totalBars = (countInBars ?? 0) + this.cfg.bars;
+		this.cycleEndTime = startTime + totalBars * secPerBar;
 	}
 
 	private tick(): void {
@@ -96,10 +106,12 @@ export class Scheduler {
 			this.nextEventIdx++;
 		}
 		if (this.nextEventIdx >= this.events.length && this.running) {
-			const last = this.events[this.events.length - 1];
-			if (!last || this.ctx.currentTime >= last.time + 0.2) {
-				if (this.cfg.loop) this.restartSeamless();
-				else this.finish();
+			if (this.cfg.loop) {
+				// Re-prime as soon as the next cycle start enters the look-ahead
+				// horizon so we can schedule the downbeat on time.
+				if (this.cycleEndTime <= horizon) this.restartSeamless();
+			} else if (this.ctx.currentTime >= this.cycleEndTime) {
+				this.finish();
 			}
 		}
 	}
@@ -110,9 +122,9 @@ export class Scheduler {
 	}
 
 	private restartSeamless(): void {
-		const last = this.events[this.events.length - 1];
-		const nextStart = last ? last.time + 0.001 : this.ctx.currentTime + 0.05;
-		this.prime(nextStart, 0);
+		// The next cycle starts exactly where the current one ends, so tempo
+		// never rushes between repetitions.
+		this.prime(this.cycleEndTime, 0);
 	}
 
 	private dispatch(e: AudioEvent): void {
