@@ -23,5 +23,8 @@
 		"typescript": "^6.0.2",
 		"vite": "^8.0.7",
 		"vitest": "^4.1.4"
+	},
+	"dependencies": {
+		"vexflow": "^5.0.0"
 	}
 }
