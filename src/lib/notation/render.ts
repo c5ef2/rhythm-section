@@ -87,7 +87,7 @@ export function renderRhythm(
 	const staves: Stave[] = [];
 	slices.forEach((_slice, barIndex) => {
 		const stave = new Stave(x, 10, staveWidths[barIndex]);
-		if (barIndex === 0) stave.addClef('percussion').addTimeSignature('4/4');
+		if (barIndex === 0) stave.addClef('bass').addTimeSignature('4/4');
 		stave.setContext(ctx).draw();
 		staves.push(stave);
 		x += staveWidths[barIndex];
@@ -150,7 +150,8 @@ function splitIntoBars(events: RhythmEvent[], bars: number): BarSlice[] {
 function toStaveNote(e: RhythmEvent): StaveNote {
 	const duration = vexDuration(e.length);
 	const note = new StaveNote({
-		keys: ['b/4'],
+		clef: 'bass',
+		keys: ['a/2'],
 		duration: e.isRest ? duration + 'r' : duration
 	});
 	if (!e.isRest && isDotted(e.length)) Dot.buildAndAttach([note], { all: true });

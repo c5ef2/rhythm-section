@@ -10,7 +10,7 @@ const CLAVES = 75;
 const WOODBLOCK = 76;
 const BASS_DRUM = 36;
 const FRETLESS_BASS_PROGRAM = 35;
-const BASS_PITCH = 40; // E2
+const BASS_PITCH = 33; // A1
 
 let workletModulePromise: Promise<void> | null = null;
 

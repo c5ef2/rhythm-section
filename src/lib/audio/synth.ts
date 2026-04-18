@@ -70,8 +70,8 @@ function bass(ctx: AudioContext, time: number, durationSec: number): void {
 	const gain = ctx.createGain();
 	const filter = ctx.createBiquadFilter();
 	osc.type = 'sawtooth';
-	// E2 ≈ 82.41 Hz
-	osc.frequency.value = 82.41;
+	// A1 = 55 Hz
+	osc.frequency.value = 55;
 	filter.type = 'lowpass';
 	filter.frequency.value = 500;
 	filter.Q.value = 4;
