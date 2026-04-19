@@ -61,7 +61,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 
 ### 2.4 Layout (responsive)
 
-- The `Staff` component observes its container with `ResizeObserver` and passes the available width into `renderRhythm`.
+- The `Staff` component observes its container with `ResizeObserver` and passes the available width into `renderRhythm`. The rendered SVG is then centered horizontally within the staff card (it uses its natural width rather than being stretched, with left/right margins auto).
 - On **wide** viewports, bars render side-by-side.
 - **Below ~520 px** and with 2 bars, each bar renders on its **own row** with its own clef + time signature.
 - The renderer scales each bar proportionally if the row's natural width exceeds the budget (with a floor so notes stay legible).

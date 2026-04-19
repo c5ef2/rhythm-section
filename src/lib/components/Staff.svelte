@@ -39,7 +39,9 @@
 
 <style>
 	.staff {
-		display: block;
+		display: flex;
+		justify-content: center;
+		align-items: center;
 		width: 100%;
 		min-width: 0;
 	}
@@ -47,9 +49,10 @@
 		display: block;
 		max-width: 100%;
 		height: auto;
+		margin: 0 auto;
 	}
 	.staff :global(.rhythm-note-active) {
-		fill: #e36414;
-		stroke: #e36414;
+		fill: var(--accent);
+		stroke: var(--accent);
 	}
 </style>
