@@ -1,4 +1,5 @@
 import type { MetronomeOptions, RhythmEvent } from '../rhythm/types';
+import { configureIosPlayback } from './ios-audio';
 import { Scheduler } from './scheduler';
 import { createSoundFontSynth } from './soundfont-synth';
 import { oscillatorSynth, type RhythmInstrument, type Synth } from './synth';
@@ -35,7 +36,10 @@ export class Player {
 	constructor(private readonly callbacks: PlayerCallbacks) {}
 
 	private async ensureAudio(): Promise<{ ctx: AudioContext; synth: Synth }> {
-		if (!this.ctx) this.ctx = new AudioContext();
+		if (!this.ctx) {
+			this.ctx = new AudioContext();
+			configureIosPlayback(this.ctx);
+		}
 		if (this.ctx.state === 'suspended') await this.ctx.resume();
 		if (!this.synth) this.synth = oscillatorSynth(this.ctx);
 		return { ctx: this.ctx, synth: this.synth };

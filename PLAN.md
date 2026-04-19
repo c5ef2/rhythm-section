@@ -99,6 +99,13 @@ This document is the living reference for the app's requirements. Keep it in syn
   - Click = square oscillator blip with different pitches per emphasis.
 - Rhythm hits are scheduled **only on the first note of each tied group** (prev tied → skip). Audible duration of a bass note is the sum of the tied group.
 
+### 2.7a iOS ringer-switch workaround (`src/lib/audio/ios-audio.ts`)
+
+- When the iPhone's side ringer switch is in the "muted" position, Safari silences any Web Audio that is labelled as the default "ambient" audio category — even at full media volume, even when Apple Music plays fine.
+- `configureIosPlayback(ctx)` is called once, right after the `AudioContext` is created:
+  - **Safari 18+**: sets `audioContext.audioSession.type = 'playback'`. This is the standards-based fix — we declare ourselves a media-playback app, so iOS mixes us with the media volume instead of the ringer stream.
+  - **Older Safari**: primes a hidden looping `<audio>` element with a 100 ms silent WAV. Any actively-playing HTMLMediaElement flips the page into media-playback mode, which also bypasses the ringer switch. The element lives in `document.body`, is `volume=0` + `playsinline`, and is created inside the user gesture that started the AudioContext so autoplay policy accepts it.
+
 ### 2.8 Scheduler (`src/lib/audio/scheduler.ts`)
 
 - Chris Wilson look-ahead pattern: `setInterval(25 ms)` schedules events 100 ms ahead.
