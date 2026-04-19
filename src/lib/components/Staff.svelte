@@ -51,7 +51,15 @@
 		height: auto;
 		margin: 0 auto;
 	}
-	.staff :global(.rhythm-note-active) {
+	/*
+	 * VexFlow renders the notehead, stem, and flag as separate children (path
+	 * / rect / line) that each set their own fill/stroke presentation
+	 * attributes. A rule on the parent group alone only repaints pieces that
+	 * don't specify fill/stroke themselves (the notehead path inherits fill,
+	 * the stem does not). Explicitly repaint every descendant.
+	 */
+	.staff :global(.rhythm-note-active),
+	.staff :global(.rhythm-note-active *) {
 		fill: var(--accent);
 		stroke: var(--accent);
 	}
