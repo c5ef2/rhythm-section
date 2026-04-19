@@ -21,9 +21,10 @@ export interface RenderResult {
 	noteElements: SVGElement[];
 	/**
 	 * Per rhythm-event index, every SVG element that should turn the accent
-	 * colour when the note is active — the note group itself plus any beams
-	 * and ties connected to it. A beam appears in the entries of every note
-	 * it covers, so the whole beam lights up when any of its notes is active.
+	 * colour when the note is active. Intentionally limited to the note's own
+	 * group (notehead + stem + any flag) — beams and ties are shared across
+	 * multiple notes, so colouring them would make the neighbours look lit up
+	 * too.
 	 */
 	highlightElements: SVGElement[][];
 }
@@ -175,27 +176,11 @@ export function renderRhythm(
 		}
 	});
 
-	// Attach beams to every rhythm index they cover, so highlighting any note
-	// in the beam colours the whole beam and its flag tails.
-	perBarBeams.flat().forEach(({ beam, notes }) => {
-		const svg = beam.getSVGElement();
-		if (!(svg instanceof SVGElement)) return;
-		notes.forEach((note) => {
-			const idx = noteToIndex.get(note);
-			if (idx !== undefined) highlightElements[idx]?.push(svg);
-		});
-	});
-
-	// Attach ties to both endpoints.
-	ties.forEach(({ tie, notes }) => {
-		const svg = tie.getSVGElement();
-		if (!(svg instanceof SVGElement)) return;
-		notes.forEach((note) => {
-			const idx = noteToIndex.get(note);
-			if (idx !== undefined) highlightElements[idx]?.push(svg);
-		});
-	});
-
+	// Intentionally do NOT add beams or ties to the highlight set. A beam is
+	// one SVG element shared by every note under it, so colouring it would
+	// make neighbouring notes appear active too; same story for the tie arc.
+	// Flags on unbeamed notes live inside the note group and are covered for
+	// free by the per-note highlight.
 	return { noteElements, highlightElements };
 }
 
