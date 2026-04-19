@@ -129,7 +129,14 @@ This document is the living reference for the app's requirements. Keep it in syn
 - Staff card stays white in both themes (music paper convention); VexFlow's default black strokes are readable against it regardless.
 - `<meta name="theme-color">` has two entries gated by `media="(prefers-color-scheme: ...)"` so iOS status bar / Android chrome match the active theme.
 
-### 2.12 Mobile UX
+### 2.12 PWA / installable app
+
+- `static/manifest.webmanifest` declares name, short name, start URL, standalone display, orientation, theme + background colours, categories, and four icon entries (192, 512, 512 maskable, plus the SVG source).
+- `static/icon-192.png`, `static/icon-512.png`, `static/icon-maskable.png`, `static/apple-touch-icon.png` are generated from `src/lib/assets/favicon.svg` with `npm run icons` (uses `@resvg/resvg-js` — pure WASM, works anywhere). The PNGs are committed so the build never needs to rasterise at deploy time.
+- `app.html` links the manifest with `./manifest.webmanifest`, the apple-touch-icon, and carries `apple-mobile-web-app-title` so iOS home-screen launches show "Rhythm Section".
+- Icons and manifest URLs are relative so they resolve correctly under GitHub Pages' `/<repo>/` subpath.
+
+### 2.13 Mobile UX
 
 - Viewport meta: `viewport-fit=cover` and safe-area insets respected in CSS.
 - PWA-capable meta tags (`theme-color`, `apple-mobile-web-app-capable`).
