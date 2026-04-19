@@ -24,3 +24,8 @@ vite.config.ts.timestamp-*
 
 # Local task lists / scratch
 prompt.md
+
+# Local screenshots (img.png, img_1.png, etc.)
+/img*.png
+/img*.jpg
+/img*.jpeg
