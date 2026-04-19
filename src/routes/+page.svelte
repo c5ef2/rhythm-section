@@ -354,7 +354,7 @@
 	}
 	.group button[aria-pressed='true'] {
 		background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
-		color: #0b1024;
+		color: var(--on-brand);
 		border-color: transparent;
 	}
 	.group-label {
@@ -364,8 +364,9 @@
 	}
 	.staff-card {
 		padding: 1rem;
-		background: #ffffff;
-		border-color: #e2e2e2;
+		background: var(--staff-bg);
+		border-color: var(--staff-border);
+		color: var(--staff-ink);
 		overflow-x: auto;
 	}
 	.settings {
@@ -406,7 +407,7 @@
 		cursor: pointer;
 	}
 	.file-button:hover span {
-		background: #262e4d;
+		background: var(--panel-hover);
 	}
 	.status {
 		font-size: 0.85rem;
@@ -416,7 +417,7 @@
 		color: var(--muted);
 	}
 	.status.ok {
-		color: #6dd3a3;
+		color: var(--status-ok);
 	}
 	.status.err {
 		color: var(--danger);

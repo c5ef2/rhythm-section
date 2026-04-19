@@ -115,7 +115,14 @@ This document is the living reference for the app's requirements. Keep it in syn
 - Decode is shape-validated; missing `rhythmAudio` / `loop` default to `false` / `true`.
 - Copy-link button writes the full URL (with hash) to the clipboard.
 
-### 2.11 Mobile UX
+### 2.11 Theme
+
+- **Follows the system** via `@media (prefers-color-scheme: light | dark)`. No manual toggle — the CSS variables flip live when the OS setting changes.
+- All colours live as CSS custom properties in `src/app.css` under `:root` (dark defaults) and `@media (prefers-color-scheme: light) :root` (light overrides).
+- Staff card stays light in both themes (music paper convention); VexFlow's default black strokes are readable against it regardless.
+- `<meta name="theme-color">` has two entries gated by `media="(prefers-color-scheme: ...)"` so iOS status bar / Android chrome match the active theme.
+
+### 2.12 Mobile UX
 
 - Viewport meta: `viewport-fit=cover` and safe-area insets respected in CSS.
 - PWA-capable meta tags (`theme-color`, `apple-mobile-web-app-capable`).

@@ -1,9 +1,11 @@
 :root {
 	color-scheme: light dark;
 
+	/* Dark theme (default) */
 	--bg: #0f1320;
 	--panel: #171b2c;
 	--panel-2: #1f253c;
+	--panel-hover: #262e4d;
 	--border: #2a3151;
 	--text: #e7ecff;
 	--muted: #9aa3c7;
@@ -11,13 +13,53 @@
 	--accent-2: #f3a261;
 	--brand: #7aa2ff;
 	--brand-2: #5f82e0;
+	--on-brand: #0b1024;
 	--danger: #ef476f;
+	--staff-bg: #ffffff;
+	--staff-border: #e2e2e2;
+	--staff-ink: #0b1024;
+	--status-ok: #6dd3a3;
+	--page-gradient: radial-gradient(
+		1200px 800px at 20% -10%,
+		#1b2142 0%,
+		var(--bg) 60%,
+		#0a0d1a 100%
+	);
 
 	--radius: 12px;
 	--radius-sm: 8px;
 	--shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 
 	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+	:root {
+		--bg: #f5f6fb;
+		--panel: #ffffff;
+		--panel-2: #eff1f9;
+		--panel-hover: #e3e7f2;
+		--border: #d3d8ea;
+		--text: #14172a;
+		--muted: #5e6786;
+		--accent: #c84f15;
+		--accent-2: #f18a4a;
+		--brand: #3b5ec9;
+		--brand-2: #5f82e0;
+		--on-brand: #ffffff;
+		--danger: #c4294e;
+		--staff-bg: #ffffff;
+		--staff-border: #d3d8ea;
+		--staff-ink: #14172a;
+		--status-ok: #1f8a5b;
+		--page-gradient: radial-gradient(
+			1200px 800px at 20% -10%,
+			#e5e9f8 0%,
+			var(--bg) 60%,
+			#edf0fa 100%
+		);
+		--shadow: 0 10px 30px rgba(20, 23, 42, 0.08);
+	}
 }
 
 * {
@@ -28,7 +70,7 @@ html,
 body {
 	margin: 0;
 	padding: 0;
-	background: radial-gradient(1200px 800px at 20% -10%, #1b2142 0%, var(--bg) 60%, #0a0d1a 100%);
+	background: var(--page-gradient);
 	color: var(--text);
 	min-height: 100vh;
 }
@@ -50,8 +92,8 @@ button {
 		transform 80ms ease;
 }
 button:hover {
-	background: #262e4d;
-	border-color: #3a4373;
+	background: var(--panel-hover);
+	border-color: var(--border);
 }
 button:active {
 	transform: translateY(1px);
@@ -60,11 +102,11 @@ button[aria-pressed='true'],
 button.is-active {
 	background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
 	border-color: transparent;
-	color: #0b1024;
+	color: var(--on-brand);
 }
 button.primary {
-	background: linear-gradient(180deg, var(--accent) 0%, #b5501f 100%);
-	color: #fff6ee;
+	background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
+	color: #fff;
 	border-color: transparent;
 }
 button.primary:hover {
