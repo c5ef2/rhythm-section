@@ -164,23 +164,29 @@ export function renderRhythm(
 
 	const noteElements: SVGElement[] = [];
 	const highlightElements: SVGElement[][] = [];
-	const noteToIndex = new Map<StaveNote, number>();
 	flatIndexMap.forEach((originalIndex, flatIdx) => {
-		noteToIndex.set(flatNotes[flatIdx], originalIndex);
-		const el = flatNotes[flatIdx].getSVGElement();
+		const note = flatNotes[flatIdx];
+		const el = note.getSVGElement();
+		const bucket: SVGElement[] = [];
 		if (el instanceof SVGElement) {
 			el.dataset.rhythmIndex = String(originalIndex);
 			el.classList.add('rhythm-note');
 			noteElements[originalIndex] = el;
-			highlightElements[originalIndex] = [el];
+			bucket.push(el);
 		}
+		// When a note is beamed, VexFlow renders its stem inside the shared
+		// vf-beam group instead of the note's own group, so getSVGElement()
+		// above only returns the notehead + dot. Grab the stem element
+		// separately so the highlight includes the vertical line of THIS
+		// note without touching the neighbouring stems in the same beam.
+		const stemEl = note.getStem?.()?.getSVGElement();
+		if (stemEl instanceof SVGElement) bucket.push(stemEl);
+		highlightElements[originalIndex] = bucket;
 	});
 
-	// Intentionally do NOT add beams or ties to the highlight set. A beam is
-	// one SVG element shared by every note under it, so colouring it would
-	// make neighbouring notes appear active too; same story for the tie arc.
-	// Flags on unbeamed notes live inside the note group and are covered for
-	// free by the per-note highlight.
+	// Intentionally do NOT add the beam rectangle or the tie arc to the
+	// highlight set — those are shared across multiple notes and would light
+	// up the neighbours too. Per-note stems are tracked above.
 	return { noteElements, highlightElements };
 }
 
