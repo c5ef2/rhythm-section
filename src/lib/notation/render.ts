@@ -13,7 +13,19 @@ import {
 import type { NoteLength, RhythmEvent } from '../rhythm/types';
 
 export interface RenderResult {
+	/**
+	 * Per rhythm-event index, the SVG element for that note's group (notehead +
+	 * stem + flag). Used by the highlight code to attach a data attribute and
+	 * to look up which note is under a pointer.
+	 */
 	noteElements: SVGElement[];
+	/**
+	 * Per rhythm-event index, every SVG element that should turn the accent
+	 * colour when the note is active — the note group itself plus any beams
+	 * and ties connected to it. A beam appears in the entries of every note
+	 * it covers, so the whole beam lights up when any of its notes is active.
+	 */
+	highlightElements: SVGElement[][];
 }
 
 const STAVE_HEIGHT = 140;
@@ -42,6 +54,16 @@ interface BarSlice {
 	// indexes in the original events array (so we can still produce a flat
 	// noteElements map for highlighting)
 	indexes: number[];
+}
+
+interface BeamAttachment {
+	beam: Beam;
+	notes: StaveNote[];
+}
+
+interface TieAttachment {
+	tie: StaveTie;
+	notes: StaveNote[];
 }
 
 export function renderRhythm(
@@ -79,7 +101,7 @@ export function renderRhythm(
 		? slices.map((_, i) => [i])
 		: [slices.map((_, i) => i)];
 
-	const staveWidths = computeStaveWidths(minNotesWidths, rows, availableWidth);
+	const staveWidths = computeStaveWidths(minNotesWidths, rows, availableWidth, stacked);
 	const rowWidths = rows.map((row) => row.reduce((sum, i) => sum + staveWidths[i], 0));
 	const totalWidth = Math.max(...rowWidths) + STAVE_PADDING * 2;
 	const totalHeight = STAVE_HEIGHT * rows.length;
@@ -109,7 +131,7 @@ export function renderRhythm(
 	const flatIndexMap: number[] = [];
 	// Beams and tuplets must be constructed BEFORE the voice is drawn so each
 	// note knows it is beamed and skips rendering its own flag.
-	const perBarBeams: Beam[][] = [];
+	const perBarBeams: BeamAttachment[][] = [];
 	const perBarTuplets: Tuplet[][] = [];
 	slices.forEach((slice, barIndex) => {
 		const staveNotes = noteMatrix[barIndex];
@@ -126,7 +148,7 @@ export function renderRhythm(
 		formatters[barIndex].format([voices[barIndex]], notesWidth);
 		voices[barIndex].draw(ctx, staves[barIndex]);
 
-		perBarBeams[barIndex].forEach((b) => b.setContext(ctx).draw());
+		perBarBeams[barIndex].forEach(({ beam }) => beam.setContext(ctx).draw());
 		perBarTuplets[barIndex].forEach((t) => t.setContext(ctx).draw());
 
 		flatNotes.push(...staveNotes);
@@ -136,33 +158,78 @@ export function renderRhythm(
 	// Ties: within a row a normal StaveTie spans the two notes; across rows we
 	// draw two "half-ties" (one trailing off the previous row, one leading into
 	// the next row) so there's no weird diagonal line between stacked bars.
-	buildFlatTies(events, flatNotes, flatIndexMap, slices, barToRow).forEach((t) =>
-		t.setContext(ctx).draw()
-	);
+	const ties = buildFlatTies(events, flatNotes, flatIndexMap, slices, barToRow);
+	ties.forEach(({ tie }) => tie.setContext(ctx).draw());
 
 	const noteElements: SVGElement[] = [];
+	const highlightElements: SVGElement[][] = [];
+	const noteToIndex = new Map<StaveNote, number>();
 	flatIndexMap.forEach((originalIndex, flatIdx) => {
+		noteToIndex.set(flatNotes[flatIdx], originalIndex);
 		const el = flatNotes[flatIdx].getSVGElement();
 		if (el instanceof SVGElement) {
 			el.dataset.rhythmIndex = String(originalIndex);
 			el.classList.add('rhythm-note');
 			noteElements[originalIndex] = el;
+			highlightElements[originalIndex] = [el];
 		}
 	});
-	return { noteElements };
+
+	// Attach beams to every rhythm index they cover, so highlighting any note
+	// in the beam colours the whole beam and its flag tails.
+	perBarBeams.flat().forEach(({ beam, notes }) => {
+		const svg = beam.getSVGElement();
+		if (!(svg instanceof SVGElement)) return;
+		notes.forEach((note) => {
+			const idx = noteToIndex.get(note);
+			if (idx !== undefined) highlightElements[idx]?.push(svg);
+		});
+	});
+
+	// Attach ties to both endpoints.
+	ties.forEach(({ tie, notes }) => {
+		const svg = tie.getSVGElement();
+		if (!(svg instanceof SVGElement)) return;
+		notes.forEach((note) => {
+			const idx = noteToIndex.get(note);
+			if (idx !== undefined) highlightElements[idx]?.push(svg);
+		});
+	});
+
+	return { noteElements, highlightElements };
 }
 
 /**
- * Compute a width for each bar-stave. If the total natural width fits inside
- * the available viewport, each stave gets exactly what it needs. Otherwise
- * shrink staves down (respecting a per-bar minimum) so the full row fits.
+ * Compute a width for each bar-stave. When bars sit on their own rows
+ * (stacked layout) we return the same width for every bar so rows line up
+ * visually. Otherwise each bar gets its own natural width, scaled down if
+ * the whole row overflows the viewport budget.
  */
 function computeStaveWidths(
 	minNotesWidths: number[],
 	rows: number[][],
-	availableWidth: number
+	availableWidth: number,
+	stacked: boolean
 ): number[] {
 	const widths = new Array(minNotesWidths.length).fill(0) as number[];
+
+	if (stacked) {
+		// All rows are single-bar rows. Pick one width = max of each row's
+		// natural width, capped at the available budget.
+		const rowBudget = Math.max(0, availableWidth - STAVE_PADDING * 2);
+		const naturalPerRow = rows.map((row) => {
+			const i = row[0];
+			return (
+				Math.max(minNotesWidths[i] + FORMATTER_MARGIN, MIN_PER_BAR) + FIRST_STAVE_MODIFIERS
+			);
+		});
+		const target = rowBudget > 0
+			? Math.min(rowBudget, Math.max(...naturalPerRow))
+			: Math.max(...naturalPerRow);
+		rows.forEach((row) => (widths[row[0]] = target));
+		return widths;
+	}
+
 	rows.forEach((row) => {
 		const rowBudget = Math.max(0, availableWidth - STAVE_PADDING * 2);
 		const natural = row.map((i, localIdx) => {
@@ -250,8 +317,8 @@ function isBeamable(e: RhythmEvent): boolean {
  * output when a beat starts with a rest — generateBeams by itself would
  * otherwise group notes from position zero and drift off the beat grid.
  */
-function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
-	const beams: Beam[] = [];
+function buildBeams(events: RhythmEvent[], notes: StaveNote[]): BeamAttachment[] {
+	const out: BeamAttachment[] = [];
 	let beatEvents: RhythmEvent[] = [];
 	let beatNotes: StaveNote[] = [];
 	let positionUnits = 0;
@@ -262,17 +329,21 @@ function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
 		const closeRun = () => {
 			if (!run) return;
 			if (run.kind === 'triplet') {
-				if (run.notes.length >= 2) beams.push(new Beam(run.notes));
+				if (run.notes.length >= 2) {
+					out.push({ beam: new Beam(run.notes), notes: [...run.notes] });
+				}
 			} else if (run.notes.length >= 2) {
-				// Every binary run in this array totals at most one beat, so a
-				// single 1/4 group covers them; generateBeams still produces
-				// partial secondary beams for mixed durations (8 + 16).
-				beams.push(
-					...Beam.generateBeams(run.notes, {
-						groups: [new Fraction(1, 4)],
-						beamRests: false
-					})
-				);
+				const beams = Beam.generateBeams(run.notes, {
+					groups: [new Fraction(1, 4)],
+					beamRests: false
+				});
+				beams.forEach((beam) => {
+					// generateBeams doesn't expose which notes ended up in each
+					// sub-beam (it can split them on partial beams). Associate
+					// the whole run's notes with each beam so highlighting any
+					// of them lights up the full beat group.
+					out.push({ beam, notes: [...(run?.notes ?? [])] });
+				});
 			}
 			run = null;
 		};
@@ -299,7 +370,7 @@ function buildBeams(events: RhythmEvent[], notes: StaveNote[]): Beam[] {
 		if (positionUnits % UNITS_PER_BEAT === 0) flushBeat();
 	});
 	flushBeat();
-	return beams;
+	return out;
 }
 
 function buildTuplets(events: RhythmEvent[], notes: StaveNote[]): Tuplet[] {
@@ -320,8 +391,8 @@ function buildFlatTies(
 	flatIndexMap: number[],
 	slices: BarSlice[],
 	barToRow: Map<number, number>
-): StaveTie[] {
-	const ties: StaveTie[] = [];
+): TieAttachment[] {
+	const ties: TieAttachment[] = [];
 	const originalToFlat: number[] = [];
 	flatIndexMap.forEach((orig, flat) => (originalToFlat[orig] = flat));
 
@@ -336,20 +407,31 @@ function buildFlatTies(
 		const rowA = barToRow.get(originalToBar.get(i) ?? -1);
 		const rowB = barToRow.get(originalToBar.get(i + 1) ?? -1);
 		if (rowA === rowB) {
-			ties.push(new StaveTie({ firstNote, lastNote }));
+			ties.push({ tie: new StaveTie({ firstNote, lastNote }), notes: [firstNote, lastNote] });
 		} else {
-			// Half-ties: firstNote only → curves off the right edge of its row;
-			// lastNote only → curves in from the left edge of the next row.
-			ties.push(new StaveTie({ firstNote, lastNote: null }));
-			ties.push(new StaveTie({ firstNote: null, lastNote }));
+			ties.push({ tie: new StaveTie({ firstNote, lastNote: null }), notes: [firstNote] });
+			ties.push({ tie: new StaveTie({ firstNote: null, lastNote }), notes: [lastNote] });
 		}
 	});
 	return ties;
 }
 
-export function setActiveNote(elements: SVGElement[], activeIndex: number | null): void {
-	elements.forEach((el, i) => {
-		if (!el) return;
-		el.classList.toggle('rhythm-note-active', i === activeIndex);
-	});
+export function setActiveNote(
+	highlightElements: SVGElement[][],
+	activeIndex: number | null
+): void {
+	const activeSet = new Set<SVGElement>();
+	if (activeIndex !== null) {
+		for (const el of highlightElements[activeIndex] ?? []) activeSet.add(el);
+	}
+	const seen = new Set<SVGElement>();
+	for (let i = 0; i < highlightElements.length; i++) {
+		const group = highlightElements[i];
+		if (!group) continue;
+		for (const el of group) {
+			if (seen.has(el)) continue;
+			seen.add(el);
+			el.classList.toggle('rhythm-note-active', activeSet.has(el));
+		}
+	}
 }

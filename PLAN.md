@@ -58,6 +58,8 @@ This document is the living reference for the app's requirements. Keep it in syn
 - **Dotted notes** get an explicit dot via `Dot.buildAndAttach`.
 - **Ties** are drawn with `StaveTie`. Ties that cross rows (when 2 bars stack vertically) render as **two half-ties** — one trailing off the right of row 1, one leading into the left of row 2 — instead of a diagonal line.
 - Beams + tuplets are constructed **before** `voice.draw()`. Otherwise notes render with their flags still visible and each note has both a flag *and* a beam.
+- **Highlight spans the whole note including tails.** The renderer returns a `highlightElements: SVGElement[][]` table — for each rhythm-event index, every SVG element that should flip to the accent colour when the note is active (its group, plus every beam/tie it is part of). Beams appear in the entry of every note they cover, so the full beam lights up as playback sweeps through.
+- **Stacked bars are rendered equal-width.** In stacked layout (narrow viewports, 2 bars) every row uses the same stave width (max of natural widths, capped at the viewport budget) so the two rows line up cleanly instead of the top being wider than the bottom.
 
 ### 2.4 Layout (responsive)
 

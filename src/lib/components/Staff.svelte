@@ -12,7 +12,7 @@
 
 	let host: HTMLDivElement;
 	let availableWidth = $state(0);
-	let noteElements = $state<SVGElement[]>([]);
+	let highlightElements = $state<SVGElement[][]>([]);
 
 	$effect(() => {
 		if (!host) return;
@@ -27,11 +27,11 @@
 	$effect(() => {
 		if (!host || availableWidth <= 0) return;
 		const result = renderRhythm(host, events, bars, availableWidth);
-		noteElements = result.noteElements;
+		highlightElements = result.highlightElements;
 	});
 
 	$effect(() => {
-		setActiveNote(noteElements, activeIndex);
+		setActiveNote(highlightElements, activeIndex);
 	});
 </script>
 
