@@ -30,7 +30,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 
 - Fixed **4/4** time signature.
 - **1 or 2 bars** chosen by the user.
-- User-selectable note lengths: whole, half, quarter, 8th, 16th, 8th triplet, dotted half / quarter / eighth.
+- User-selectable note lengths: whole, half, quarter, 8th, 16th, 8th triplet, dotted eighth.
 - **Include rests** toggle (≈20 % of events become rests when enabled).
 - **Include ties** toggle.
 - **Seeded deterministic** output via `mulberry32(seed)`. Regenerate = new seed.

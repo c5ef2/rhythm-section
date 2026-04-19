@@ -12,8 +12,6 @@ export type NoteLength =
 	| 'eighth'
 	| 'sixteenth'
 	| 'eighth-triplet'
-	| 'dotted-half'
-	| 'dotted-quarter'
 	| 'dotted-eighth';
 
 /** How many sixteenth-slots each binary note length consumes. */
@@ -23,8 +21,6 @@ export const BINARY_SLOTS: Readonly<Record<Exclude<NoteLength, 'eighth-triplet'>
 	quarter: 4,
 	eighth: 2,
 	sixteenth: 1,
-	'dotted-half': 12,
-	'dotted-quarter': 6,
 	'dotted-eighth': 3
 } as const;
 

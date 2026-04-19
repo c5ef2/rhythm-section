@@ -4,9 +4,7 @@ const UNITS_PER_BEAT = 12;
 const BEATS_PER_BAR = 4;
 const UNITS: Readonly<Record<NoteLength, number>> = {
 	whole: 48,
-	'dotted-half': 36,
 	half: 24,
-	'dotted-quarter': 18,
 	quarter: 12,
 	'dotted-eighth': 9,
 	eighth: 6,

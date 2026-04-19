@@ -10,9 +10,7 @@ describe('BINARY_SLOTS', () => {
 		expect(BINARY_SLOTS.sixteenth * 16).toBe(16);
 	});
 
-	it('dotted values are 1.5x their base', () => {
-		expect(BINARY_SLOTS['dotted-half']).toBe(BINARY_SLOTS.half + BINARY_SLOTS.quarter);
-		expect(BINARY_SLOTS['dotted-quarter']).toBe(BINARY_SLOTS.quarter + BINARY_SLOTS.eighth);
+	it('dotted-eighth is 1.5x an eighth', () => {
 		expect(BINARY_SLOTS['dotted-eighth']).toBe(BINARY_SLOTS.eighth + BINARY_SLOTS.sixteenth);
 	});
 });

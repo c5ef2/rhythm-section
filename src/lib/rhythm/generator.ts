@@ -30,8 +30,6 @@ const BINARY_LENGTHS_SET = new Set<NoteLength>([
 	'quarter',
 	'eighth',
 	'sixteenth',
-	'dotted-half',
-	'dotted-quarter',
 	'dotted-eighth'
 ]);
 

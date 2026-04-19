@@ -1,5 +1,16 @@
+import type { NoteLength } from '../rhythm/types';
 import { decodeShare } from './share';
 import type { SharedState } from './share';
+
+const VALID_LENGTHS: ReadonlySet<NoteLength> = new Set([
+	'whole',
+	'half',
+	'quarter',
+	'eighth',
+	'sixteenth',
+	'eighth-triplet',
+	'dotted-eighth'
+]);
 
 export const STORAGE_KEY = 'rhythm-section:v1';
 export const HASH_PREFIX = '#s=';
@@ -27,8 +38,15 @@ export interface LoadContext {
 
 export function loadSettings(ctx: LoadContext): Settings {
 	const fromHash = extractFromHash(ctx.hash);
-	if (fromHash) return fromHash;
-	return loadFromStorage(ctx.storage) ?? DEFAULT_SETTINGS;
+	if (fromHash) return sanitise(fromHash);
+	return sanitise(loadFromStorage(ctx.storage) ?? DEFAULT_SETTINGS);
+}
+
+/** Strip out any note-lengths that this version of the app no longer supports. */
+function sanitise(s: Settings): Settings {
+	const filtered = s.allowedLengths.filter((l) => VALID_LENGTHS.has(l));
+	const allowedLengths = filtered.length > 0 ? filtered : [...DEFAULT_SETTINGS.allowedLengths];
+	return { ...s, allowedLengths };
 }
 
 export function saveSettings(settings: Settings, storage: Storage): void {

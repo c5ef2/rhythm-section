@@ -15,8 +15,6 @@
 		{ value: 'eighth', label: 'eighth note' },
 		{ value: 'sixteenth', label: 'sixteenth note' },
 		{ value: 'eighth-triplet', label: 'eighth triplet' },
-		{ value: 'dotted-half', label: 'dotted half' },
-		{ value: 'dotted-quarter', label: 'dotted quarter' },
 		{ value: 'dotted-eighth', label: 'dotted eighth' }
 	];
 

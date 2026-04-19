@@ -29,9 +29,7 @@ const BEATS_PER_BAR = 4;
 const UNITS_PER_BAR = UNITS_PER_BEAT * BEATS_PER_BAR;
 const UNITS: Readonly<Record<NoteLength, number>> = {
 	whole: 48,
-	'dotted-half': 36,
 	half: 24,
-	'dotted-quarter': 18,
 	quarter: 12,
 	'dotted-eighth': 9,
 	eighth: 6,
@@ -215,10 +213,8 @@ function vexDuration(length: NoteLength): string {
 		case 'whole':
 			return 'w';
 		case 'half':
-		case 'dotted-half':
 			return 'h';
 		case 'quarter':
-		case 'dotted-quarter':
 			return 'q';
 		case 'eighth':
 		case 'dotted-eighth':
@@ -230,7 +226,7 @@ function vexDuration(length: NoteLength): string {
 }
 
 function isDotted(length: NoteLength): boolean {
-	return length === 'dotted-half' || length === 'dotted-quarter' || length === 'dotted-eighth';
+	return length === 'dotted-eighth';
 }
 
 function isBeamable(e: RhythmEvent): boolean {

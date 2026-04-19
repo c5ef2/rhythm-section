@@ -28,8 +28,6 @@ describe('generateRhythm (binary)', () => {
 		'quarter',
 		'eighth',
 		'sixteenth',
-		'dotted-half',
-		'dotted-quarter',
 		'dotted-eighth'
 	];
 
@@ -207,8 +205,6 @@ describe('beat-boundary splitting', () => {
 					'quarter',
 					'eighth',
 					'sixteenth',
-					'dotted-half',
-					'dotted-quarter',
 					'dotted-eighth'
 				],
 				allowRests: true,
@@ -234,7 +230,7 @@ describe('beat-boundary splitting', () => {
 		for (let seed = 0; seed < 200; seed++) {
 			const { events } = generateRhythm({
 				bars: 1,
-				allowedLengths: ['eighth', 'dotted-quarter'],
+				allowedLengths: ['eighth', 'quarter'],
 				allowRests: false,
 				allowTies: true,
 				seed
@@ -294,8 +290,6 @@ describe('allowTies=false', () => {
 					'quarter',
 					'eighth',
 					'sixteenth',
-					'dotted-half',
-					'dotted-quarter',
 					'dotted-eighth'
 				],
 				allowRests: true,
@@ -314,9 +308,7 @@ describe('tie chain cap', () => {
 				bars: 2,
 				allowedLengths: [
 					'whole',
-					'dotted-half',
 					'half',
-					'dotted-quarter',
 					'quarter',
 					'eighth',
 					'sixteenth',
@@ -344,7 +336,7 @@ describe('tie chain cap', () => {
 		for (let seed = 0; seed < 500; seed++) {
 			const { events } = generateRhythm({
 				bars: 2,
-				allowedLengths: ['dotted-half', 'half', 'quarter', 'eighth', 'sixteenth'],
+				allowedLengths: ['half', 'quarter', 'eighth', 'sixteenth', 'dotted-eighth'],
 				allowRests: false,
 				allowTies: true,
 				seed

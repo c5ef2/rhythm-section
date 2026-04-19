@@ -8,11 +8,9 @@
 	let { length, size = 24 }: Props = $props();
 
 	const FLAGS: Record<string, number> = { eighth: 1, sixteenth: 2, 'dotted-eighth': 1 };
-	const isHollow = $derived(length === 'whole' || length === 'half' || length === 'dotted-half');
+	const isHollow = $derived(length === 'whole' || length === 'half');
 	const hasStem = $derived(length !== 'whole');
-	const hasDot = $derived(
-		length === 'dotted-half' || length === 'dotted-quarter' || length === 'dotted-eighth'
-	);
+	const hasDot = $derived(length === 'dotted-eighth');
 	const flagCount = $derived(FLAGS[length] ?? 0);
 	const isTriplet = $derived(length === 'eighth-triplet');
 </script>
