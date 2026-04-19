@@ -59,9 +59,14 @@ function pushMetronomeClicks(
 	const clicksPerBeat = clicksPerBeatOf(metronome.division);
 	const totalClicks = Math.round(clicksPerBeat * BEATS_PER_BAR * bars);
 	for (let i = 0; i < totalClicks; i++) {
-		const time = startTime + (i / clicksPerBeat) * secPerBeat;
-		const isFirstBeatOfBar =
-			Math.round(i % (clicksPerBeat * BEATS_PER_BAR)) === 0;
+		const beatFloat = i / clicksPerBeat;
+		const beatInBar = Math.floor(beatFloat) % BEATS_PER_BAR;
+		// Skip any click that lands on a beat the user has turned off. The
+		// sub-clicks within a counted beat still fire (e.g. both eighths of
+		// beat 1 if that beat is counted and the division is eighth).
+		if (!isBeatCounted(metronome, beatInBar)) continue;
+		const time = startTime + beatFloat * secPerBeat;
+		const isFirstBeatOfBar = Math.round(i % (clicksPerBeat * BEATS_PER_BAR)) === 0;
 		const isOnBeat = Math.round(i % clicksPerBeat) === 0;
 		const emphasis: ClickEmphasis =
 			isFirstBeatOfBar && metronome.emphasizeFirstBeat
@@ -71,6 +76,14 @@ function pushMetronomeClicks(
 					: 'subbeat';
 		out.push({ type: 'metronome', time, emphasis });
 	}
+}
+
+function isBeatCounted(metronome: MetronomeOptions, beatInBar: number): boolean {
+	const counted = metronome.countedBeats;
+	// Tolerate older payloads that pre-date the countedBeats field by defaulting
+	// to "all beats counted".
+	if (!counted) return true;
+	return counted[beatInBar] ?? true;
 }
 
 function pushRhythmAndHighlights(

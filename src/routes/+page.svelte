@@ -246,6 +246,21 @@
 				{/each}
 			</div>
 		</div>
+		<div class="settings-row">
+			<span class="group-label">Count beats</span>
+			<div class="group">
+				{#each [0, 1, 2, 3] as beatIndex (beatIndex)}
+					<button
+						type="button"
+						aria-pressed={appState.settings.metronome.countedBeats[beatIndex]}
+						onclick={() => actions.toggleCountedBeat(beatIndex as 0 | 1 | 2 | 3)}
+						title={`Count beat ${beatIndex + 1}`}
+					>
+						{beatIndex + 1}
+					</button>
+				{/each}
+			</div>
+		</div>
 	</section>
 </main>
 

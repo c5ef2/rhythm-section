@@ -8,7 +8,12 @@ const sample: SharedState = {
 	allowedLengths: ['eighth', 'sixteenth', 'eighth-triplet'],
 	allowRests: true,
 	allowTies: true,
-	metronome: { enabled: true, division: 'eighth', emphasizeFirstBeat: true },
+	metronome: {
+		enabled: true,
+		division: 'eighth',
+		emphasizeFirstBeat: true,
+		countedBeats: [true, false, true, false]
+	},
 	rhythmInstrument: 'bass',
 	countIn: true,
 	rhythmAudio: true,

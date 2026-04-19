@@ -23,7 +23,12 @@ export const DEFAULT_SETTINGS: Settings = {
 	allowedLengths: ['quarter', 'eighth'],
 	allowRests: true,
 	allowTies: false,
-	metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: true },
+	metronome: {
+		enabled: true,
+		division: 'quarter',
+		emphasizeFirstBeat: true,
+		countedBeats: [true, true, true, true]
+	},
 	rhythmInstrument: 'drum',
 	countIn: true,
 	rhythmAudio: false,

@@ -55,4 +55,12 @@ export interface MetronomeOptions {
 	enabled: boolean;
 	division: MetronomeDivision;
 	emphasizeFirstBeat: boolean;
+	/**
+	 * One flag per beat of the bar (4 entries for 4/4). A click is only emitted
+	 * on a beat if its flag is true. When the division is finer than a quarter
+	 * (e.g. eighth), every sub-click within a counted beat also fires, so
+	 * "count only beat 1 at eighth division" produces two clicks at the start
+	 * of the bar, not one.
+	 */
+	countedBeats: [boolean, boolean, boolean, boolean];
 }

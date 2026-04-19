@@ -106,6 +106,21 @@ export function setMetronomeDivision(division: MetronomeDivision): void {
 	appState.settings.metronome = { ...appState.settings.metronome, division };
 }
 
+export function toggleCountedBeat(beatIndex: 0 | 1 | 2 | 3): void {
+	const current = appState.settings.metronome.countedBeats;
+	const next = [current[0], current[1], current[2], current[3]] as [
+		boolean,
+		boolean,
+		boolean,
+		boolean
+	];
+	next[beatIndex] = !next[beatIndex];
+	// Require at least one counted beat, otherwise the metronome goes silent
+	// and "on" becomes indistinguishable from "off".
+	if (!next.some((b) => b)) return;
+	appState.settings.metronome = { ...appState.settings.metronome, countedBeats: next };
+}
+
 export function setInstrument(inst: RhythmInstrument): void {
 	appState.settings.rhythmInstrument = inst;
 }

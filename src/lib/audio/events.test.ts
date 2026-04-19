@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { buildEventList, type AudioEvent } from './events';
-import type { RhythmEvent } from '../rhythm/types';
+import type { MetronomeOptions, RhythmEvent } from '../rhythm/types';
+
+function metronome(overrides: Partial<MetronomeOptions> = {}): MetronomeOptions {
+	return {
+		enabled: true,
+		division: 'quarter',
+		emphasizeFirstBeat: true,
+		countedBeats: [true, true, true, true],
+		...overrides
+	};
+}
 
 function quarter(): RhythmEvent {
 	return {
@@ -30,7 +40,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: true },
+			metronome: metronome(),
 			rhythmAudio: false
 		});
 		const clicks = list.filter((e): e is Extract<AudioEvent, { type: 'metronome' }> => e.type === 'metronome');
@@ -44,7 +54,7 @@ describe('buildEventList', () => {
 			bars: 2,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: true }
+			metronome: metronome()
 		});
 		const accents = list
 			.filter((e) => e.type === 'metronome')
@@ -60,7 +70,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 120,
 			startTime: 0,
-			metronome: { enabled: true, division: 'eighth', emphasizeFirstBeat: false }
+			metronome: metronome({ division: 'eighth', emphasizeFirstBeat: false })
 		});
 		const clicks = list.filter((e) => e.type === 'metronome');
 		expect(clicks.length).toBe(8); // 2 per beat × 4 beats
@@ -72,7 +82,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: false, division: 'quarter', emphasizeFirstBeat: false },
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
 			rhythmAudio: true
 		});
 		const hits = list.filter((e) => e.type === 'rhythm');
@@ -92,7 +102,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: false, division: 'quarter', emphasizeFirstBeat: false },
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
 			rhythmAudio: true
 		});
 		const hits = list.filter((e): e is Extract<AudioEvent, { type: 'rhythm' }> => e.type === 'rhythm');
@@ -107,7 +117,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: false, division: 'quarter', emphasizeFirstBeat: false },
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
 			rhythmAudio: true
 		});
 		const hits = list.filter((e): e is Extract<AudioEvent, { type: 'rhythm' }> => e.type === 'rhythm');
@@ -123,7 +133,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: false, division: 'quarter', emphasizeFirstBeat: false },
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
 			rhythmAudio: false
 		});
 		const highlights = list.filter(
@@ -138,7 +148,7 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
-			metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: true },
+			metronome: metronome(),
 			rhythmAudio: true,
 			countInBars: 1
 		});
@@ -156,9 +166,42 @@ describe('buildEventList', () => {
 			bars: 1,
 			bpm: 60,
 			startTime: 10,
-			metronome: { enabled: true, division: 'quarter', emphasizeFirstBeat: false }
+			metronome: metronome({ emphasizeFirstBeat: false })
 		});
 		const times = list.map((e) => e.time);
 		expect(times).toEqual([10, 11, 12, 13]);
+	});
+
+	it('skips clicks on beats the user has turned off', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({
+				emphasizeFirstBeat: false,
+				countedBeats: [true, false, true, false]
+			})
+		});
+		const times = list.filter((e) => e.type === 'metronome').map((e) => e.time);
+		// Only beats 1 (t=0) and 3 (t=2) click.
+		expect(times).toEqual([0, 2]);
+	});
+
+	it('emits all eighth sub-clicks within a counted beat when division=eighth', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({
+				division: 'eighth',
+				emphasizeFirstBeat: false,
+				countedBeats: [true, false, false, false]
+			})
+		});
+		const times = list.filter((e) => e.type === 'metronome').map((e) => e.time);
+		// Both eighths of beat 1 click: t=0 and t=0.5.
+		expect(times).toEqual([0, 0.5]);
 	});
 });

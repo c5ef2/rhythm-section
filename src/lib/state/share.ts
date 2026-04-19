@@ -28,6 +28,10 @@ export function decodeShare(encoded: string): SharedState | null {
 			const p = parsed as Record<string, unknown>;
 			if (typeof p.rhythmAudio !== 'boolean') p.rhythmAudio = false;
 			if (typeof p.loop !== 'boolean') p.loop = true;
+			const metronome = p.metronome as Record<string, unknown> | undefined;
+			if (metronome && !Array.isArray(metronome.countedBeats)) {
+				metronome.countedBeats = [true, true, true, true];
+			}
 		}
 		return isSharedState(parsed) ? parsed : null;
 	} catch {
@@ -72,13 +76,19 @@ function isSharedState(v: unknown): v is SharedState {
 function isMetronomeOptions(v: unknown): v is MetronomeOptions {
 	if (!v || typeof v !== 'object') return false;
 	const m = v as Record<string, unknown>;
+	const divisionOk =
+		m.division === 'half' ||
+		m.division === 'quarter' ||
+		m.division === 'eighth' ||
+		m.division === 'triplet' ||
+		m.division === 'sixteenth';
+	const beats = m.countedBeats;
+	const beatsOk =
+		Array.isArray(beats) && beats.length === 4 && beats.every((b) => typeof b === 'boolean');
 	return (
 		typeof m.enabled === 'boolean' &&
 		typeof m.emphasizeFirstBeat === 'boolean' &&
-		(m.division === 'half' ||
-			m.division === 'quarter' ||
-			m.division === 'eighth' ||
-			m.division === 'triplet' ||
-			m.division === 'sixteenth')
+		divisionOk &&
+		beatsOk
 	);
 }
