@@ -114,8 +114,8 @@ This document is the living reference for the app's requirements. Keep it in syn
 
 - Format: `#s=<base64url(JSON(SharedState))>`.
 - Encodes every setting + the rhythm seed, so the recipient sees the exact same exercise.
-- Decode is shape-validated; missing `rhythmAudio` / `loop` default to `false` / `true`.
-- Copy-link button writes the full URL (with hash) to the clipboard.
+- Decode is shape-validated; missing `rhythmAudio` defaults to `false`, legacy `loop` field is ignored, missing `metronome.countedBeats` defaults to `[true, true, true, true]`.
+- The **Share button** (icon-only, top-right in the header) uses `navigator.share()` when supported (opens the native share sheet on mobile). Falls back to copying the URL to the clipboard.
 
 ### 2.11 Theme
 

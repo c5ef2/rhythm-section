@@ -78,8 +78,39 @@
 
 <main>
 	<header>
-		<h1>Rhythm Section</h1>
-		<p class="subtitle">Practice reading rhythms with a generated exercise and a metronome.</p>
+		<div class="title-row">
+			<div>
+				<h1>Rhythm Section</h1>
+				<p class="subtitle">
+					Practice reading rhythms with a generated exercise and a metronome.
+				</p>
+			</div>
+			<button
+				type="button"
+				class="share-btn icon-btn"
+				onclick={actions.shareCurrent}
+				aria-label="Share"
+				title="Share"
+			>
+				<svg
+					width="22"
+					height="22"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<circle cx="18" cy="5" r="3" />
+					<circle cx="6" cy="12" r="3" />
+					<circle cx="18" cy="19" r="3" />
+					<line x1="8.6" y1="10.5" x2="15.4" y2="6.5" />
+					<line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+				</svg>
+			</button>
+		</div>
 	</header>
 
 	<section class="card transport">
@@ -114,7 +145,6 @@
 				</button>
 			</div>
 		</div>
-		<button type="button" class="share" onclick={actions.copyShareLink}>⎘ Copy link</button>
 	</section>
 
 	<section class="card staff-card">
@@ -277,6 +307,20 @@
 		margin: 0;
 		color: var(--muted);
 	}
+	.title-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+	.title-row > :first-child {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.share-btn {
+		width: 2.75rem;
+		height: 2.75rem;
+		flex: 0 0 auto;
+	}
 	.card {
 		background: var(--panel);
 		border: 1px solid var(--border);
@@ -302,9 +346,6 @@
 	}
 	.transport .equal {
 		flex: 1 1 0;
-	}
-	.transport .share {
-		width: 100%;
 	}
 	.bpm-stepper {
 		display: inline-flex;
@@ -339,9 +380,6 @@
 	}
 	.bars-group button {
 		min-width: 2.5rem;
-	}
-	.share {
-		margin-left: auto;
 	}
 	.group {
 		display: inline-flex;

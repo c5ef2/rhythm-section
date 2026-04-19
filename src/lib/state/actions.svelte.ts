@@ -143,9 +143,34 @@ export async function loadSoundFontFile(file: File): Promise<void> {
 	}
 }
 
-export async function copyShareLink(): Promise<void> {
-	if (!browser) return;
+export function currentShareUrl(): string {
 	const url = new URL(window.location.href);
 	url.hash = 's=' + encodeShare($state.snapshot(appState.settings));
-	await navigator.clipboard.writeText(url.toString());
+	return url.toString();
+}
+
+/**
+ * Share the current exercise. Uses navigator.share when available so mobile
+ * users get the native share sheet; otherwise falls back to copying the link
+ * to the clipboard.
+ */
+export async function shareCurrent(): Promise<void> {
+	if (!browser) return;
+	const url = currentShareUrl();
+	const shareApi = (navigator as unknown as { share?: (d: ShareData) => Promise<void> }).share;
+	if (shareApi) {
+		try {
+			await shareApi.call(navigator, {
+				title: 'Rhythm Section',
+				text: 'Rhythm practice exercise',
+				url
+			});
+			return;
+		} catch (err) {
+			// User dismissed or share failed — fall through to clipboard.
+			if ((err as DOMException)?.name === 'AbortError') return;
+			console.warn('share failed, falling back to clipboard', err);
+		}
+	}
+	await navigator.clipboard.writeText(url);
 }
