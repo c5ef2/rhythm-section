@@ -45,10 +45,10 @@
 		void s.metronome.enabled;
 		void s.metronome.division;
 		void s.metronome.emphasizeFirstBeat;
+		void s.metronome.countedBeats;
 		void s.countIn;
 		void s.rhythmAudio;
 		void s.rhythmInstrument;
-		void s.loop;
 		void appState.rhythm.events;
 		untrack(() => {
 			actions.restartIfPlaying();
@@ -88,15 +88,6 @@
 		</button>
 		<div class="transport-row">
 			<button type="button" class="equal" onclick={actions.regenerate}>↻ Regenerate</button>
-			<button
-				type="button"
-				class="equal"
-				aria-pressed={appState.settings.loop}
-				onclick={actions.toggleLoop}
-				title="Loop playback"
-			>
-				⟳ Loop
-			</button>
 		</div>
 		<div class="transport-row">
 			<div class="bpm-stepper" role="group" aria-label="BPM">

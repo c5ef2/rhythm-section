@@ -69,7 +69,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 ### 2.5 Playback
 
 - **BPM snapping**: only the classic Maelzel notches 40–208. The BPM control is a − / value / + stepper; typed/shared values that land off-notch are snapped on load.
-- **Play / Pause**, **Regenerate** (new seed), **Loop** (seamless restart), **Copy share link**.
+- **Play / Pause**, **Regenerate** (new seed), **Share link**. The player **always loops** (seamless restart anchored to the exact cycle end); there is no loop toggle.
 - **Count-in** toggle adds one bar of metronome clicks before the rhythm starts (count-in applies only to the first cycle when looping).
 - **Loop restart is anchored to the exact cycle end** (`startTime + bars × secPerBar`), not to the last scheduled event's start time, so tempo never rushes between repetitions.
 - **Settings apply immediately during playback.** An effect watches the playback-affecting fields; any change tears down the current scheduler and starts a new one in place.

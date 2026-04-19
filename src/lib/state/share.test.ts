@@ -17,7 +17,6 @@ const sample: SharedState = {
 	rhythmInstrument: 'bass',
 	countIn: true,
 	rhythmAudio: true,
-	loop: false,
 	seed: 123456789
 };
 

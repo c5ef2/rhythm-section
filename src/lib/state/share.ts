@@ -12,7 +12,6 @@ export interface SharedState {
 	rhythmInstrument: RhythmInstrument;
 	countIn: boolean;
 	rhythmAudio: boolean;
-	loop: boolean;
 	seed: number;
 }
 
@@ -27,7 +26,9 @@ export function decodeShare(encoded: string): SharedState | null {
 		if (parsed && typeof parsed === 'object') {
 			const p = parsed as Record<string, unknown>;
 			if (typeof p.rhythmAudio !== 'boolean') p.rhythmAudio = false;
-			if (typeof p.loop !== 'boolean') p.loop = true;
+			// `loop` was a toggle in earlier versions; strip it so validation
+			// succeeds on both old and new payloads.
+			delete p.loop;
 			const metronome = p.metronome as Record<string, unknown> | undefined;
 			if (metronome && !Array.isArray(metronome.countedBeats)) {
 				metronome.countedBeats = [true, true, true, true];
@@ -67,7 +68,6 @@ function isSharedState(v: unknown): v is SharedState {
 		typeof s.seed === 'number' &&
 		typeof s.countIn === 'boolean' &&
 		typeof s.rhythmAudio === 'boolean' &&
-		typeof s.loop === 'boolean' &&
 		(s.rhythmInstrument === 'drum' || s.rhythmInstrument === 'bass') &&
 		isMetronomeOptions(s.metronome)
 	);

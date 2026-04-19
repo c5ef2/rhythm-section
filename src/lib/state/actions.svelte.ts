@@ -29,7 +29,7 @@ function currentInputs() {
 		rhythmAudio: s.rhythmAudio,
 		rhythmInstrument: s.rhythmInstrument,
 		countInBars: s.countIn ? 1 : 0,
-		loop: s.loop
+		loop: true
 	};
 }
 
@@ -127,10 +127,6 @@ export function setInstrument(inst: RhythmInstrument): void {
 
 export function toggleRhythmAudio(): void {
 	appState.settings.rhythmAudio = !appState.settings.rhythmAudio;
-}
-
-export function toggleLoop(): void {
-	appState.settings.loop = !appState.settings.loop;
 }
 
 export async function loadSoundFontFile(file: File): Promise<void> {
