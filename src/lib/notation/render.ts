@@ -18,7 +18,7 @@ export interface RenderResult {
 
 const STAVE_HEIGHT = 140;
 const STAVE_PADDING = 10;
-const FIRST_STAVE_MODIFIERS = 90; // clef + time signature
+const FIRST_STAVE_MODIFIERS = 45; // time signature only (no clef)
 const MID_STAVE_MODIFIERS = 20;
 const MIN_PER_BAR = 220;
 const STACK_BREAKPOINT = 520; // below this, 2 bars stack vertically instead of side by side
@@ -95,9 +95,10 @@ export function renderRhythm(
 		row.forEach((barIndex) => {
 			const stave = new Stave(x, y, staveWidths[barIndex]);
 			const firstOnRow = row[0] === barIndex;
-			// Every stacked row gets its own clef + time sig; side-by-side only the
-			// leftmost stave does.
-			if (firstOnRow) stave.addClef('bass').addTimeSignature('4/4');
+			// Every stacked row repeats the time signature; side-by-side bars
+			// only show it on the leftmost stave. No clef — this is a pure
+			// rhythm reader, so the saved horizontal space goes to the notes.
+			if (firstOnRow) stave.addTimeSignature('4/4');
 			stave.setContext(ctx).draw();
 			staves[barIndex] = stave;
 			x += staveWidths[barIndex];
@@ -199,9 +200,11 @@ function splitIntoBars(events: RhythmEvent[], bars: number): BarSlice[] {
 
 function toStaveNote(e: RhythmEvent): StaveNote {
 	const duration = vexDuration(e.length);
+	// No clef is drawn on the stave; the middle line of a treble-clef stave
+	// (b/4) puts the note head neatly on the centre line so rests and notes
+	// share the same vertical axis.
 	const note = new StaveNote({
-		clef: 'bass',
-		keys: ['a/2'],
+		keys: ['b/4'],
 		duration: e.isRest ? duration + 'r' : duration
 	});
 	if (!e.isRest && isDotted(e.length)) Dot.buildAndAttach([note], { all: true });
