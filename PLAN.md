@@ -84,7 +84,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 - **Divisions**: half, quarter, 8th, triplet, 16th (shown as note-icon buttons).
 - **Emphasize first beat** toggle; downbeat uses claves / higher oscillator blip, other on-beats use woodblock / mid blip, sub-beats are quieter.
 - **Counted beats**: 1 / 2 / 3 / 4 toggle buttons pick which beats click. When division is finer than a quarter (eighths / triplets / sixteenths), every sub-click within a counted beat still fires — counting just beat 1 at eighth division gives two clicks at the start of the bar, not one. At least one beat must stay counted.
-- **Count-in** toggle adds one bar of metronome clicks before the rhythm starts (count-in applies only to the first cycle when looping). Lives in the metronome section alongside the other metronome behaviours.
+- **Count-in** toggle adds one bar of clicks before the rhythm starts (count-in applies only to the first cycle when looping). The count-in always clicks four steady quarters with the downbeat emphasised — independent of whether the metronome is enabled, which division is set, or which beats are counted — so the player always hears the lead-in clearly. Lives in the metronome section alongside the other metronome behaviours.
 
 ### 2.7 Rhythm audio
 

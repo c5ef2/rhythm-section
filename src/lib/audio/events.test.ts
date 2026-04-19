@@ -188,6 +188,43 @@ describe('buildEventList', () => {
 		expect(times).toEqual([0, 2]);
 	});
 
+	it('count-in still clicks even when the metronome is disabled', () => {
+		const list = buildEventList({
+			events: [quarter(), quarter(), quarter(), quarter()],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			countInBars: 1
+		});
+		const clicks = list.filter(
+			(e): e is Extract<AudioEvent, { type: 'metronome' }> => e.type === 'metronome'
+		);
+		// Count-in = four quarter clicks at t = 0, 1, 2, 3 (at 60 bpm).
+		expect(clicks.map((c) => c.time)).toEqual([0, 1, 2, 3]);
+		// Downbeat emphasised on the first click; the rest are plain on-beats.
+		expect(clicks[0].emphasis).toBe('downbeat');
+		expect(clicks.slice(1).every((c) => c.emphasis === 'onbeat')).toBe(true);
+	});
+
+	it('count-in clicks on every beat regardless of counted-beats', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({
+				enabled: false,
+				countedBeats: [true, false, false, false]
+			}),
+			countInBars: 1
+		});
+		const clicks = list.filter((e) => e.type === 'metronome');
+		// Even though the metronome is configured to count only beat 1, the
+		// count-in always clicks all four beats so the lead-in is clear.
+		expect(clicks.length).toBe(4);
+	});
+
 	it('emits all eighth sub-clicks within a counted beat when division=eighth', () => {
 		const list = buildEventList({
 			events: [],

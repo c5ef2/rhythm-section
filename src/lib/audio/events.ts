@@ -41,12 +41,31 @@ export function buildEventList(input: BuildEventListInput): AudioEvent[] {
 	const contentStart = startTime + countInBars * secPerBar;
 	const out: AudioEvent[] = [];
 
+	// Count-in always clicks (four steady quarter clicks per bar, downbeat
+	// emphasised) even when the metronome is disabled — otherwise the lead-in
+	// goes silent and the player is guessing when the rhythm starts.
+	if (countInBars > 0) pushCountInClicks(out, countInBars, secPerBeat, startTime);
 	if (metronome.enabled) {
-		pushMetronomeClicks(out, metronome, bars + countInBars, secPerBeat, startTime);
+		pushMetronomeClicks(out, metronome, bars, secPerBeat, contentStart);
 	}
 	pushRhythmAndHighlights(out, events, secPerBeat, contentStart, rhythmAudio);
 
 	return out.sort((a, b) => a.time - b.time);
+}
+
+function pushCountInClicks(
+	out: AudioEvent[],
+	countInBars: number,
+	secPerBeat: number,
+	startTime: number
+): void {
+	for (let bar = 0; bar < countInBars; bar++) {
+		for (let beat = 0; beat < BEATS_PER_BAR; beat++) {
+			const time = startTime + (bar * BEATS_PER_BAR + beat) * secPerBeat;
+			const emphasis: ClickEmphasis = beat === 0 ? 'downbeat' : 'onbeat';
+			out.push({ type: 'metronome', time, emphasis });
+		}
+	}
 }
 
 function pushMetronomeClicks(
