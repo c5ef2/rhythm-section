@@ -267,11 +267,12 @@ function splitIntoBars(events: RhythmEvent[], bars: number): BarSlice[] {
 
 function toStaveNote(e: RhythmEvent): StaveNote {
 	const duration = vexDuration(e.length);
-	// No clef is drawn on the stave; the middle line of a treble-clef stave
-	// (b/4) puts the note head neatly on the centre line so rests and notes
-	// share the same vertical axis.
+	// No clef is drawn. f/4 (with the default treble clef inferred by
+	// VexFlow) sits in the space between the bottom two lines, which
+	// reads a bit easier than the middle line — stems grow upward with
+	// room, noteheads stay low and distinct from the time signature.
 	const note = new StaveNote({
-		keys: ['b/4'],
+		keys: ['f/4'],
 		duration: e.isRest ? duration + 'r' : duration
 	});
 	if (!e.isRest && isDotted(e.length)) Dot.buildAndAttach([note], { all: true });

@@ -51,7 +51,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 ### 2.3 Notation (`src/lib/notation/render.ts`, VexFlow 5)
 
 - **No clef.** This is a pure rhythm reader, so the clef space goes to the notes. Each stave row still shows the time signature on the leftmost stave.
-- All rhythm notes render on the middle line (`b/4` in VexFlow's default clef) regardless of audio pitch — see §2.7 for the bass audio pitch.
+- All rhythm notes render in the **bottom space** of the staff (key `f/4` with VexFlow's default treble clef — the space between the two lowest staff lines). That leaves plenty of vertical room for stems/flags growing upward and keeps the notehead well clear of the time signature. Audio pitch is unrelated — see §2.7 for the bass audio pitch.
 - Every beat is visually self-contained — notes that cross beat boundaries are rendered as tied pieces.
 - **Beams flush at absolute beat boundaries.** Beams are built a beat at a time using the absolute unit position, so a beat that starts with a rest doesn't drag the following beam group off the grid. `Beam.generateBeams` still gets to place partial secondary beams for mixed durations (dotted-8 + 16).
 - **Triplets** render as a 3-note beam group with a "3" tuplet bracket.
