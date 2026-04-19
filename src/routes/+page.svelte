@@ -160,14 +160,6 @@
 				/>
 				Include ties
 			</label>
-			<label>
-				<input
-					type="checkbox"
-					checked={appState.settings.countIn}
-					onchange={actions.toggleCountIn}
-				/>
-				Count-in
-			</label>
 		</div>
 		<div class="settings-row">
 			<label>
@@ -227,6 +219,14 @@
 					onchange={actions.toggleEmphasizeFirstBeat}
 				/>
 				Emphasize first beat
+			</label>
+			<label>
+				<input
+					type="checkbox"
+					checked={appState.settings.countIn}
+					onchange={actions.toggleCountIn}
+				/>
+				Count-in
 			</label>
 		</div>
 		<div class="settings-row">
