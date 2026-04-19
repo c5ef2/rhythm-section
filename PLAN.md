@@ -116,6 +116,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 - Encodes every setting + the rhythm seed, so the recipient sees the exact same exercise.
 - Decode is shape-validated; missing `rhythmAudio` defaults to `false`, legacy `loop` field is ignored, missing `metronome.countedBeats` defaults to `[true, true, true, true]`.
 - The **Share button** (icon-only, top-right in the header) uses `navigator.share()` when supported (opens the native share sheet on mobile). Falls back to copying the URL to the clipboard.
+- The current staff is captured to a PNG whenever the user taps Share and attached via `navigator.share({ files })` when the platform accepts it (Chrome Android, Safari iOS). The app also dynamically sets `og:image` / `twitter:image` meta to a data URL of the same image whenever the rhythm changes — caveat: purely static scrapers that don't execute JS only see the initial HTML, so this is best-effort for JS-aware previews.
 
 ### 2.11 Theme
 

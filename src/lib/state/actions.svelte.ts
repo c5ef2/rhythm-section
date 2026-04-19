@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { bpmStepDown, bpmStepUp, snapBpm } from '../audio/bpm';
 import { Player } from '../audio/player';
+import { captureStaffImage, updateOgImage } from '../notation/share-image';
 import { randomSeed } from '../rng/seeded';
 import type {
 	MetronomeDivision,
@@ -151,26 +152,45 @@ export function currentShareUrl(): string {
 
 /**
  * Share the current exercise. Uses navigator.share when available so mobile
- * users get the native share sheet; otherwise falls back to copying the link
- * to the clipboard.
+ * users get the native share sheet with the rhythm's PNG attached; otherwise
+ * falls back to copying the link to the clipboard.
  */
 export async function shareCurrent(): Promise<void> {
 	if (!browser) return;
 	const url = currentShareUrl();
-	const shareApi = (navigator as unknown as { share?: (d: ShareData) => Promise<void> }).share;
-	if (shareApi) {
+	const nav = navigator as unknown as {
+		share?: (d: ShareData) => Promise<void>;
+		canShare?: (d: ShareData) => boolean;
+	};
+
+	let files: File[] | undefined;
+	try {
+		const image = await captureStaffImage();
+		files = [new File([image.png], 'rhythm.png', { type: 'image/png' })];
+	} catch {
+		files = undefined;
+	}
+
+	if (nav.share) {
+		const payload: ShareData = {
+			title: 'Rhythm Section',
+			text: 'Rhythm practice exercise',
+			url
+		};
+		const canAttach = files && nav.canShare?.({ files });
+		if (canAttach) payload.files = files;
 		try {
-			await shareApi.call(navigator, {
-				title: 'Rhythm Section',
-				text: 'Rhythm practice exercise',
-				url
-			});
+			await nav.share(payload);
 			return;
 		} catch (err) {
-			// User dismissed or share failed — fall through to clipboard.
 			if ((err as DOMException)?.name === 'AbortError') return;
 			console.warn('share failed, falling back to clipboard', err);
 		}
 	}
 	await navigator.clipboard.writeText(url);
+}
+
+export async function refreshShareImage(): Promise<void> {
+	if (!browser) return;
+	await updateOgImage();
 }

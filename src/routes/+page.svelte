@@ -55,6 +55,17 @@
 		});
 	});
 
+	// Keep the og:image meta in sync with the visible staff so JS-aware link
+	// previews (and a navigator.share fallback) show the current rhythm.
+	$effect(() => {
+		void appState.rhythm.events;
+		void appState.settings.bars;
+		untrack(() => {
+			// Wait a frame for VexFlow to finish drawing before capturing.
+			requestAnimationFrame(() => actions.refreshShareImage());
+		});
+	});
+
 	function onKeydown(e: KeyboardEvent) {
 		if (e.code !== 'Space') return;
 		const target = e.target as HTMLElement | null;
