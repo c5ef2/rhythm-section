@@ -26,6 +26,10 @@
 		{ value: 'sixteenth', length: 'sixteenth', label: 'sixteenth' }
 	];
 
+	const rhythmMode = $derived(
+		appState.settings.rhythmAudio ? appState.settings.rhythmInstrument : 'off'
+	);
+
 	// Keep settings snapshot in localStorage whenever they change.
 	$effect(() => {
 		persist($state.snapshot(appState.settings));
@@ -90,7 +94,7 @@
 <main>
 	<header>
 		<div class="title-row">
-			<div>
+			<div class="title-block">
 				<h1>Rhythm Section</h1>
 				<p class="subtitle">
 					Practice reading rhythms with a generated exercise and a metronome.
@@ -98,14 +102,14 @@
 			</div>
 			<button
 				type="button"
-				class="share-btn icon-btn"
+				class="share-btn"
 				onclick={actions.shareCurrent}
 				aria-label="Share"
 				title="Share"
 			>
 				<svg
-					width="22"
-					height="22"
+					width="20"
+					height="20"
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
@@ -125,13 +129,54 @@
 	</header>
 
 	<section class="card transport">
-		<button class="primary play" type="button" onclick={actions.togglePlay}>
-			{appState.isPlaying ? '⏸ Pause' : '▶ Play'}
-		</button>
-		<div class="transport-row">
-			<button type="button" class="equal" onclick={actions.regenerate}>↻ Regenerate</button>
+		<div class="transport-top">
+			<button class="primary play" type="button" onclick={actions.togglePlay}>
+				{#if appState.isPlaying}
+					<svg
+						viewBox="0 0 24 24"
+						width="18"
+						height="18"
+						fill="currentColor"
+						aria-hidden="true"
+					>
+						<rect x="6" y="5" width="4" height="14" rx="1" />
+						<rect x="14" y="5" width="4" height="14" rx="1" />
+					</svg>
+					<span>Pause</span>
+				{:else}
+					<svg
+						viewBox="0 0 24 24"
+						width="18"
+						height="18"
+						fill="currentColor"
+						aria-hidden="true"
+					>
+						<path d="M7 4.5v15l13-7.5z" />
+					</svg>
+					<span>Play</span>
+				{/if}
+			</button>
+			<button type="button" class="secondary regenerate" onclick={actions.regenerate}>
+				<svg
+					viewBox="0 0 24 24"
+					width="18"
+					height="18"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />
+					<path d="M21 3v5h-5" />
+					<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
+					<path d="M3 21v-5h5" />
+				</svg>
+				<span>Regenerate</span>
+			</button>
 		</div>
-		<div class="transport-row">
+		<div class="transport-bottom">
 			<div class="bpm-stepper" role="group" aria-label="BPM">
 				<span class="group-label">BPM</span>
 				<button type="button" aria-label="Slower" onclick={() => actions.stepBpm(-1)}>−</button>
@@ -194,25 +239,22 @@
 			</label>
 		</div>
 		<div class="settings-row">
-			<label>
-				<input
-					type="checkbox"
-					checked={appState.settings.rhythmAudio}
-					onchange={actions.toggleRhythmAudio}
-				/>
-				Play rhythm audio
-			</label>
-			<span class="group-label">Instrument</span>
+			<span class="group-label">Rhythm audio</span>
 			<div class="group">
 				<button
 					type="button"
-					aria-pressed={appState.settings.rhythmInstrument === 'drum'}
-					onclick={() => actions.setInstrument('drum')}>Drum</button
+					aria-pressed={rhythmMode === 'off'}
+					onclick={() => actions.setRhythmMode('off')}>Off</button
 				>
 				<button
 					type="button"
-					aria-pressed={appState.settings.rhythmInstrument === 'bass'}
-					onclick={() => actions.setInstrument('bass')}>Bass</button
+					aria-pressed={rhythmMode === 'drum'}
+					onclick={() => actions.setRhythmMode('drum')}>Drum</button
+				>
+				<button
+					type="button"
+					aria-pressed={rhythmMode === 'bass'}
+					onclick={() => actions.setRhythmMode('bass')}>Bass</button
 				>
 			</div>
 		</div>
@@ -262,6 +304,23 @@
 			</label>
 		</div>
 		<div class="settings-row">
+			<span class="group-label">Count beats</span>
+			<div class="beat-picker">
+				{#each [0, 1, 2, 3] as beatIndex (beatIndex)}
+					<button
+						type="button"
+						class="beat-btn"
+						aria-pressed={appState.settings.metronome.countedBeats[beatIndex]}
+						onclick={() => actions.toggleCountedBeat(beatIndex as 0 | 1 | 2 | 3)}
+						aria-label={`Count beat ${beatIndex + 1}`}
+						title={`Count beat ${beatIndex + 1}`}
+					>
+						<NoteIcon length="quarter" size={22} />
+					</button>
+				{/each}
+			</div>
+		</div>
+		<div class="settings-row">
 			<span class="group-label">Division</span>
 			<div class="group">
 				{#each DIVISIONS as d (d.value)}
@@ -278,167 +337,195 @@
 				{/each}
 			</div>
 		</div>
-		<div class="settings-row">
-			<span class="group-label">Count beats</span>
-			<div class="group">
-				{#each [0, 1, 2, 3] as beatIndex (beatIndex)}
-					<button
-						type="button"
-						aria-pressed={appState.settings.metronome.countedBeats[beatIndex]}
-						onclick={() => actions.toggleCountedBeat(beatIndex as 0 | 1 | 2 | 3)}
-						title={`Count beat ${beatIndex + 1}`}
-					>
-						{beatIndex + 1}
-					</button>
-				{/each}
-			</div>
-		</div>
 	</section>
 </main>
 
 <style>
 	main {
-		max-width: 960px;
-		margin: 1.25rem auto 4rem;
-		padding: 0 1rem max(1rem, env(safe-area-inset-bottom));
+		max-width: 920px;
+		margin: 1.5rem auto 4rem;
+		padding: 0 var(--space-4) max(var(--space-4), env(safe-area-inset-bottom));
 		display: grid;
-		gap: 1rem;
+		gap: var(--space-4);
 	}
 	@supports (padding: max(0px)) {
 		main {
-			padding-left: max(1rem, env(safe-area-inset-left));
-			padding-right: max(1rem, env(safe-area-inset-right));
+			padding-left: max(var(--space-4), env(safe-area-inset-left));
+			padding-right: max(var(--space-4), env(safe-area-inset-right));
 		}
 	}
+
+	header {
+		padding: var(--space-3) 0 var(--space-1);
+	}
 	header h1 {
-		margin: 0 0 0.25rem;
-		letter-spacing: 0.01em;
+		margin: 0 0 0.15rem;
+		font-size: 1.6rem;
+		font-weight: 700;
+		letter-spacing: -0.02em;
 	}
 	.subtitle {
 		margin: 0;
-		color: var(--muted);
+		color: var(--text-muted);
+		font-size: 0.95rem;
 	}
 	.title-row {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: var(--space-4);
 	}
-	.title-row > :first-child {
+	.title-block {
 		flex: 1 1 auto;
 		min-width: 0;
 	}
 	.share-btn {
-		width: 2.75rem;
-		height: 2.75rem;
+		width: 2.5rem;
+		height: 2.5rem;
+		min-height: 0;
+		padding: 0;
 		flex: 0 0 auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: var(--radius-pill);
 	}
+
 	.card {
 		background: var(--panel);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		padding: 1rem 1.1rem;
-		box-shadow: var(--shadow);
+		padding: var(--space-4) var(--space-5);
+		box-shadow: var(--shadow-md);
 		min-width: 0;
 	}
+
 	.transport {
 		display: grid;
-		gap: 0.6rem;
+		gap: var(--space-3);
 	}
-	.transport-row {
+	.transport-top {
+		display: grid;
+		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+		gap: var(--space-2);
+	}
+	.transport-bottom {
 		display: flex;
-		gap: 0.5rem;
-		align-items: center;
+		gap: var(--space-2);
+		align-items: stretch;
 		flex-wrap: wrap;
 	}
-	.transport .play {
-		width: 100%;
+	.play,
+	.regenerate {
 		min-height: 3rem;
-		font-size: 1.05rem;
+		font-size: 1rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
 	}
-	.transport .equal {
-		flex: 1 1 0;
+	.secondary {
+		background: var(--panel-2);
 	}
+	.secondary:hover {
+		background: var(--panel-hover);
+	}
+
 	.bpm-stepper {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
+		gap: var(--space-1);
 		background: var(--panel-2);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
 		padding: 0.15rem 0.4rem;
 		flex: 1 1 auto;
+		box-shadow: var(--shadow-sm);
 	}
 	.bpm-stepper button {
 		background: transparent;
 		border: none;
-		padding: 0.35rem 0.65rem;
+		padding: 0.3rem 0.8rem;
 		font-weight: 600;
+		font-size: 1rem;
 		min-height: 2.25rem;
 		flex: 0 0 auto;
+		box-shadow: none;
 	}
 	.bpm-stepper button:hover {
-		background: var(--panel);
+		background: var(--panel-hover);
 	}
 	.bpm-stepper output {
-		min-width: 2.75rem;
+		min-width: 3rem;
 		text-align: center;
 		font-variant-numeric: tabular-nums;
 		font-weight: 600;
+		font-size: 1.1rem;
 		flex: 1 1 auto;
 	}
-	.bars-group {
-		flex: 0 0 auto;
-	}
-	.bars-group button {
-		min-width: 2.5rem;
-	}
+
 	.group {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.15rem;
+		gap: 0.15rem;
+		padding: 0.2rem;
 		background: var(--panel-2);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
+		box-shadow: var(--shadow-sm);
 	}
 	.group button {
 		background: transparent;
 		border: 1px solid transparent;
 		color: var(--text);
-		padding: 0.35rem 0.65rem;
+		padding: 0.3rem 0.8rem;
+		min-height: 2.1rem;
+		box-shadow: none;
+	}
+	.group button:hover {
+		background: var(--panel-hover);
 	}
 	.group button[aria-pressed='true'] {
 		background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
 		color: var(--on-brand);
 		border-color: transparent;
+		box-shadow: 0 2px 10px -4px color-mix(in oklab, var(--brand) 50%, transparent);
+	}
+	.bars-group {
+		flex: 0 0 auto;
+	}
+	.bars-group button {
+		min-width: 2.4rem;
 	}
 	.group-label {
-		color: var(--muted);
+		color: var(--text-muted);
 		font-size: 0.85rem;
-		margin-right: 0.25rem;
 	}
+
 	.staff-card {
-		padding: 1rem;
+		padding: var(--space-5);
 		background: var(--staff-bg);
 		border-color: var(--staff-border);
 		color: var(--staff-ink);
 		overflow-x: auto;
 	}
+
 	.settings {
 		display: grid;
-		gap: 0.75rem;
+		gap: var(--space-3);
 	}
 	.settings-row {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-3);
 	}
 	label {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+		color: var(--text);
 	}
+
 	.icon-btn {
 		width: 2.25rem;
 		height: 2.25rem;
@@ -446,7 +533,24 @@
 		align-items: center;
 		justify-content: center;
 		padding: 0;
+		min-height: 0;
 	}
+
+	.beat-picker {
+		display: inline-flex;
+		gap: 0.4rem;
+	}
+	.beat-btn {
+		width: 2.75rem;
+		height: 2.75rem;
+		min-height: 0;
+		padding: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: var(--radius-sm);
+	}
+
 	.file-button {
 		display: inline-flex;
 		align-items: center;
@@ -458,8 +562,9 @@
 		background: var(--panel-2);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		padding: 0.4rem 0.8rem;
+		padding: 0.5rem 0.9rem;
 		cursor: pointer;
+		box-shadow: var(--shadow-sm);
 	}
 	.file-button:hover span {
 		background: var(--panel-hover);
@@ -472,22 +577,32 @@
 		color: var(--muted);
 	}
 	.status.ok {
-		color: var(--status-ok);
+		color: var(--success);
 	}
 	.status.err {
 		color: var(--danger);
 	}
 
 	@media (max-width: 640px) {
+		header {
+			padding: var(--space-2) 0 0;
+		}
 		header h1 {
-			font-size: 1.4rem;
+			font-size: 1.35rem;
 		}
 		.subtitle {
 			font-size: 0.9rem;
 		}
+		.card {
+			padding: var(--space-3) var(--space-4);
+		}
 		.icon-btn {
-			width: 2.75rem;
-			height: 2.75rem;
+			width: 2.5rem;
+			height: 2.5rem;
+		}
+		.beat-btn {
+			width: 3rem;
+			height: 3rem;
 		}
 		:global(.rhythm-note-active) {
 			stroke-width: 1.5px;

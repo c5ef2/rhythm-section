@@ -130,6 +130,21 @@ export function toggleRhythmAudio(): void {
 	appState.settings.rhythmAudio = !appState.settings.rhythmAudio;
 }
 
+/**
+ * One-shot setter for the combined "rhythm audio + instrument" control.
+ *  - 'off'  → rhythm audio disabled (metronome only)
+ *  - 'drum' → rhythm audio on, kick drum plays every note
+ *  - 'bass' → rhythm audio on, fretless bass plays every note
+ */
+export function setRhythmMode(mode: 'off' | RhythmInstrument): void {
+	if (mode === 'off') {
+		appState.settings.rhythmAudio = false;
+		return;
+	}
+	appState.settings.rhythmAudio = true;
+	appState.settings.rhythmInstrument = mode;
+}
+
 export async function loadSoundFontFile(file: File): Promise<void> {
 	if (!player) return;
 	appState.soundFontName = file.name;

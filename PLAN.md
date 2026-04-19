@@ -118,11 +118,13 @@ This document is the living reference for the app's requirements. Keep it in syn
 - The **Share button** (icon-only, top-right in the header) uses `navigator.share()` when supported (opens the native share sheet on mobile). Falls back to copying the URL to the clipboard.
 - The current staff is captured to a PNG whenever the user taps Share and attached via `navigator.share({ files })` when the platform accepts it (Chrome Android, Safari iOS). The app also dynamically sets `og:image` / `twitter:image` meta to a data URL of the same image whenever the rhythm changes — caveat: purely static scrapers that don't execute JS only see the initial HTML, so this is best-effort for JS-aware previews.
 
-### 2.11 Theme
+### 2.11 Theme & visual system
 
 - **Follows the system** via `@media (prefers-color-scheme: light | dark)`. No manual toggle — the CSS variables flip live when the OS setting changes.
-- All colours live as CSS custom properties in `src/app.css` under `:root` (dark defaults) and `@media (prefers-color-scheme: light) :root` (light overrides).
-- Staff card stays light in both themes (music paper convention); VexFlow's default black strokes are readable against it regardless.
+- All colours, shadows, radii and spacing tokens live as CSS custom properties in `src/app.css` under `:root` (dark defaults) and `@media (prefers-color-scheme: light) :root` (light overrides).
+- **Brand-blue** drives every primary surface (Play button gradient, pressed-state buttons, focus ring). Accent orange is reserved for the active-note highlight on the staff — the one thing that should grab attention while you're reading.
+- Ambient page gradient uses two soft radial highlights; cards sit on the gradient with a subtle shadow (no heavy black borders).
+- Staff card stays white in both themes (music paper convention); VexFlow's default black strokes are readable against it regardless.
 - `<meta name="theme-color">` has two entries gated by `media="(prefers-color-scheme: ...)"` so iOS status bar / Android chrome match the active theme.
 
 ### 2.12 Mobile UX
