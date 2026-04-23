@@ -78,11 +78,6 @@
 		actions.togglePlay();
 	}
 
-	function onSoundFontFile(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) actions.loadSoundFontFile(file);
-	}
 </script>
 
 <svelte:head>
@@ -257,22 +252,6 @@
 					onclick={() => actions.setRhythmMode('bass')}>Bass</button
 				>
 			</div>
-		</div>
-		<div class="settings-row">
-			<span class="group-label">SoundFont</span>
-			<label class="file-button">
-				<input type="file" accept=".sf2,.sf3,.dls" onchange={onSoundFontFile} />
-				<span>Load .sf2 / .sf3</span>
-			</label>
-			{#if appState.soundFontStatus === 'loading'}
-				<span class="status">Loading {appState.soundFontName}…</span>
-			{:else if appState.soundFontStatus === 'loaded'}
-				<span class="status ok">✓ {appState.soundFontName}</span>
-			{:else if appState.soundFontStatus === 'error'}
-				<span class="status err">Failed to load</span>
-			{:else}
-				<span class="status muted">Using synthesised fallback</span>
-			{/if}
 		</div>
 	</section>
 
@@ -549,38 +528,6 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: var(--radius-sm);
-	}
-
-	.file-button {
-		display: inline-flex;
-		align-items: center;
-	}
-	.file-button input[type='file'] {
-		display: none;
-	}
-	.file-button span {
-		background: var(--panel-2);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 0.5rem 0.9rem;
-		cursor: pointer;
-		box-shadow: var(--shadow-sm);
-	}
-	.file-button:hover span {
-		background: var(--panel-hover);
-	}
-	.status {
-		font-size: 0.85rem;
-		color: var(--text);
-	}
-	.status.muted {
-		color: var(--muted);
-	}
-	.status.ok {
-		color: var(--success);
-	}
-	.status.err {
-		color: var(--danger);
 	}
 
 	@media (max-width: 640px) {

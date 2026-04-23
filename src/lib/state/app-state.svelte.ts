@@ -3,8 +3,6 @@ import { generateRhythm, type GeneratedRhythm } from '../rhythm/generator';
 import { DEFAULT_SETTINGS, loadSettings } from './settings';
 import type { Settings } from './settings';
 
-export type SoundFontStatus = 'none' | 'loading' | 'loaded' | 'error';
-
 function readInitialSettings(): Settings {
 	if (!browser) return DEFAULT_SETTINGS;
 	return loadSettings({ storage: localStorage, hash: window.location.hash });
@@ -19,10 +17,6 @@ class AppState {
 
 	/** Currently-highlighted rhythm event index, or null when stopped. */
 	activeIndex: number | null = $state(null);
-
-	/** SoundFont load progress. Not persisted (each session re-loads). */
-	soundFontStatus: SoundFontStatus = $state('none');
-	soundFontName: string = $state('');
 
 	/**
 	 * Deterministic regeneration: `rhythm` is derived purely from settings, so

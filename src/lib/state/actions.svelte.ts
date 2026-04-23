@@ -3,10 +3,7 @@ import { bpmStepDown, bpmStepUp, snapBpm } from '../audio/bpm';
 import { Player } from '../audio/player';
 import { captureStaffImage, updateOgImage } from '../notation/share-image';
 import { randomSeed } from '../rng/seeded';
-import type {
-	MetronomeDivision,
-	NoteLength
-} from '../rhythm/types';
+import type { MetronomeDivision, NoteLength } from '../rhythm/types';
 import { appState } from './app-state.svelte';
 import { encodeShare, type RhythmInstrument } from './share';
 
@@ -143,20 +140,6 @@ export function setRhythmMode(mode: 'off' | RhythmInstrument): void {
 	}
 	appState.settings.rhythmAudio = true;
 	appState.settings.rhythmInstrument = mode;
-}
-
-export async function loadSoundFontFile(file: File): Promise<void> {
-	if (!player) return;
-	appState.soundFontName = file.name;
-	appState.soundFontStatus = 'loading';
-	try {
-		const buffer = await file.arrayBuffer();
-		await player.loadSoundFont(buffer, appState.settings.rhythmInstrument);
-		appState.soundFontStatus = 'loaded';
-	} catch (err) {
-		console.error(err);
-		appState.soundFontStatus = 'error';
-	}
 }
 
 export function currentShareUrl(): string {

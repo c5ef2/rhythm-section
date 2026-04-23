@@ -12,6 +12,13 @@ const BASS_DRUM = 36;
 const FRETLESS_BASS_PROGRAM = 35;
 const BASS_PITCH = 33; // A1
 
+/**
+ * URL of the small SoundFont bundled with the app (kick + claves + woodblock
+ * + fretless bass only). Built by `npm run soundfont` from the full
+ * GeneralUserGS via spessasynth_core.
+ */
+export const BUNDLED_SOUNDFONT_URL = `${base}/rhythm.sf3`;
+
 let workletModulePromise: Promise<void> | null = null;
 
 function ensureWorkletLoaded(ctx: BaseAudioContext): Promise<void> {
@@ -26,6 +33,13 @@ function ensureWorkletLoaded(ctx: BaseAudioContext): Promise<void> {
 export interface SoundFontSynthOptions {
 	ctx: AudioContext;
 	soundFontBuffer: ArrayBuffer;
+}
+
+/** Fetch the bundled SoundFont into an ArrayBuffer. */
+export async function fetchBundledSoundFont(): Promise<ArrayBuffer> {
+	const res = await fetch(BUNDLED_SOUNDFONT_URL);
+	if (!res.ok) throw new Error(`SoundFont fetch failed: ${res.status}`);
+	return res.arrayBuffer();
 }
 
 export async function createSoundFontSynth({

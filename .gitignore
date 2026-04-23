@@ -29,3 +29,4 @@ prompt.md
 /img*.png
 /img*.jpg
 /img*.jpeg
+.cache/

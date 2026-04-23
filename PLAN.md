@@ -90,12 +90,12 @@ This document is the living reference for the app's requirements. Keep it in syn
 
 - Default **off**; user toggles on per session (persisted).
 - **Instrument**: drum (kick) *or* bass (fretless bass at A1).
-- When the user loads a `.sf2` / `.sf3` / `.dls` file, the Player swaps from the oscillator synth to a SpessaSynth `WorkletSynthesizer`:
-  - Drum = GM kick drum (ch 9, note 36), metronome uses woodblock (76) / claves (75) on the same drum channel.
+- A minimal **bundled SoundFont** (`static/rhythm.sf3`, ~770 KB) ships with the app and is auto-loaded by the `Player` in the background on first user interaction. The file is built by `npm run soundfont` (`scripts/build-soundfont.mjs`): fetch SpessaSynth's GeneralUserGS.sf3, keep only the Standard 1 drum kit and Fretless Bass preset, write back out with SF3 Ogg samples preserved. Output is committed so deploys don't hit the network.
+  - Drum = GM kick drum (ch 9, note 36); metronome uses woodblock (76) / claves (75) on the same drum channel.
   - Bass = GM fretless bass (ch 0, program 35), pitched MIDI 33 (A1).
-- With **no** SoundFont loaded, the oscillator fallback is used:
+- While the SoundFont is loading (~first second) the oscillator fallback keeps the app audible. If the fetch ever fails (offline first-run before the service worker has cached the asset) the oscillator stays in use:
   - Kick = sine sweep 180→60 Hz *plus* a bandpassed noise transient around 1.5 kHz so it remains audible on phone speakers.
-  - Bass = sawtooth at 55 Hz (A1) layered with 110 Hz second harmonic, low-passed — again so phone speakers can actually produce it.
+  - Bass = sawtooth at 55 Hz (A1) layered with 110 Hz second harmonic, low-passed.
   - Click = square oscillator blip with different pitches per emphasis.
 - Rhythm hits are scheduled **only on the first note of each tied group** (prev tied → skip). Audible duration of a bass note is the sum of the tied group.
 
