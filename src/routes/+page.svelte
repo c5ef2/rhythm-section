@@ -5,6 +5,7 @@
 	import NoteLengthPicker from '$lib/components/NoteLengthPicker.svelte';
 	import { appState } from '$lib/state/app-state.svelte';
 	import * as actions from '$lib/state/actions.svelte';
+	import { reloadOnNewServiceWorker } from '$lib/service-worker-client';
 	import { persist } from '$lib/state/settings.svelte';
 	import type { MetronomeDivision, NoteLength } from '$lib/rhythm/types';
 
@@ -29,6 +30,12 @@
 	const rhythmMode = $derived(
 		appState.settings.rhythmAudio ? appState.settings.rhythmInstrument : 'off'
 	);
+
+	// Reload once a newer service worker has taken over, so users on a
+	// flaky connection always land on the latest build when they come back.
+	$effect(() => {
+		reloadOnNewServiceWorker();
+	});
 
 	// Keep settings snapshot in localStorage whenever they change.
 	$effect(() => {

@@ -142,6 +142,8 @@ This document is the living reference for the app's requirements. Keep it in syn
 - `static/icon-192.png`, `static/icon-512.png`, `static/icon-maskable.png`, `static/apple-touch-icon.png` are generated from `src/lib/assets/favicon.svg` with `npm run icons` (uses `@resvg/resvg-js` — pure WASM, works anywhere). The PNGs are committed so the build never needs to rasterise at deploy time.
 - `app.html` links the manifest with `./manifest.webmanifest`, the apple-touch-icon, and carries `apple-mobile-web-app-title` so iOS home-screen launches show "Rhythm Section".
 - Icons and manifest URLs are relative so they resolve correctly under GitHub Pages' `/<repo>/` subpath.
+- **Offline mode via `src/service-worker.ts`.** On install the SW precaches everything in `$service-worker`'s `build` + `files` lists — the compiled JS / CSS, the bundled SoundFont, the manifest, the icons. Navigation requests go network-first, falling back to the cached shell when offline. Other asset requests go cache-first. The SW calls `skipWaiting()` + `clients.claim()` so a new deploy takes control immediately.
+- **Auto-refresh on new deploy.** `reloadOnNewServiceWorker()` (in `src/lib/service-worker-client.ts`) listens for `controllerchange`; the moment the browser's background SW update swaps in a new controller, the page reloads once so the user always ends up on the latest build as soon as they're back online. First-load safety: the listener is only installed if a controller was already present at page load, so a fresh install doesn't reload itself.
 
 ### 2.13 Mobile UX
 
