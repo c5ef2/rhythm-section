@@ -12,7 +12,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 - **Vite** dev/preview on port **8473**, binding to `0.0.0.0` so the devcontainer port mapping reaches the browser.
 - **@sveltejs/adapter-static**. SSR and prerender are **disabled** for the main page — it renders once client-side so the first paint reflects localStorage. See `src/routes/+page.ts`.
 - **GitHub Actions** workflow at `.github/workflows/deploy.yml` builds on push to `main` with `BASE_PATH=/$REPO` and deploys to GitHub Pages.
-- **Vitest** for unit tests. Playwright smoke test is on the backlog but not yet implemented.
+- **Vitest** for unit tests.
 - **spessasynth_processor.min.js** is copied into `static/` so the AudioWorklet module is served at runtime.
 
 ### Dev practices
@@ -71,7 +71,7 @@ This document is the living reference for the app's requirements. Keep it in syn
 ### 2.5 Playback
 
 - **BPM snapping**: only the classic Maelzel notches 40–208. The BPM control is a − / value / + stepper; typed/shared values that land off-notch are snapped on load.
-- **Play / Pause**, **Regenerate** (new seed), **Share link**. The player **always loops** (seamless restart anchored to the exact cycle end); there is no loop toggle.
+- **Play / Stop** (the button is a hard stop — it doesn't preserve playback position), **Regenerate** (new seed), **Share link**. The player **always loops** (seamless restart anchored to the exact cycle end); there is no loop toggle.
 - **Count-in** toggle adds one bar of metronome clicks before the rhythm starts (count-in applies only to the first cycle when looping).
 - **Loop restart is anchored to the exact cycle end** (`startTime + bars × secPerBar`), not to the last scheduled event's start time, so tempo never rushes between repetitions.
 - **Settings apply immediately during playback.** An effect watches the playback-affecting fields; any change tears down the current scheduler and starts a new one in place.
@@ -240,7 +240,6 @@ Before adding a feature, check:
 
 ## 6. Known deferred items
 
-- Playwright e2e smoke test (step 13 of the original plan).
 - A built-in / bundled SoundFont — currently users upload their own because we don't ship a 30 MB General MIDI bank.
 - True pause/resume from mid-bar position (today Pause == Stop; Play restarts from the top of the cycle).
 

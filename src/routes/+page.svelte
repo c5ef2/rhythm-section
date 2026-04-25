@@ -159,10 +159,9 @@
 						fill="currentColor"
 						aria-hidden="true"
 					>
-						<rect x="6" y="5" width="4" height="14" rx="1" />
-						<rect x="14" y="5" width="4" height="14" rx="1" />
+						<rect x="6" y="6" width="12" height="12" rx="1.5" />
 					</svg>
-					<span>Pause</span>
+					<span>Stop</span>
 				{:else}
 					<svg
 						viewBox="0 0 24 24"
