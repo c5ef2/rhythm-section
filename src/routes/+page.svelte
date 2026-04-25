@@ -51,6 +51,15 @@
 		persist($state.snapshot(appState.settings));
 	});
 
+	// Mirror the current settings into the URL hash so the address bar always
+	// matches what the user is hearing — copy-paste a URL at any time and
+	// the recipient gets the exact same exercise. $state.snapshot deep-reads
+	// every nested setting so this effect re-runs on any change.
+	$effect(() => {
+		$state.snapshot(appState.settings);
+		untrack(actions.updateUrlFromState);
+	});
+
 	// Snap any out-of-notch BPM (e.g. from an older share URL) to the Maelzel scale.
 	$effect(() => {
 		void appState.settings.bpm;

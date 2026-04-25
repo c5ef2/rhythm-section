@@ -163,6 +163,18 @@ export function currentShareUrl(): string {
 }
 
 /**
+ * Replace the current URL with one that encodes the current settings, without
+ * pushing a new history entry — call this whenever any persisted setting
+ * changes so the address bar always reflects what the user is hearing.
+ */
+export function updateUrlFromState(): void {
+	if (!browser) return;
+	const url = currentShareUrl();
+	if (url === window.location.href) return;
+	history.replaceState(history.state, '', url);
+}
+
+/**
  * Share the current exercise. Uses navigator.share when available so mobile
  * users get the native share sheet with the rhythm's PNG attached; otherwise
  * falls back to copying the link to the clipboard.
