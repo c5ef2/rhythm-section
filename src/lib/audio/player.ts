@@ -16,9 +16,12 @@ export interface PlayInputs {
 	loop: boolean;
 }
 
+export type SoundFontStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 export interface PlayerCallbacks {
 	onActiveNote(index: number | null): void;
 	onStopped(): void;
+	onSoundFontStatus?(status: SoundFontStatus): void;
 }
 
 /**
@@ -36,39 +39,73 @@ export class Player {
 
 	constructor(private readonly callbacks: PlayerCallbacks) {}
 
-	private async ensureAudio(): Promise<{ ctx: AudioContext; synth: Synth }> {
+	/**
+	 * Public entry point that callers invoke as soon as the page is ready.
+	 * Creates the AudioContext (suspended is fine — we never resume it here)
+	 * and kicks off the SoundFont fetch + synth init in the background. By
+	 * the time the user hits Play the worklet is wired up and a single
+	 * `ctx.resume()` is enough to start hearing audio.
+	 */
+	preload(): Promise<void> {
+		try {
+			this.ensureContext();
+		} catch (err) {
+			// Some browsers refuse to create an AudioContext outside a gesture.
+			// We'll try again from inside `run()` when one is available.
+			console.warn('AudioContext could not be created eagerly', err);
+			return Promise.resolve();
+		}
+		return this.kickOffSoundFontLoad().then(
+			() => undefined,
+			() => undefined
+		);
+	}
+
+	private ensureContext(): { ctx: AudioContext; synth: Synth } {
 		if (!this.ctx) {
 			this.ctx = new AudioContext();
 			configureIosPlayback(this.ctx);
 		}
-		if (this.ctx.state === 'suspended') await this.ctx.resume();
 		if (!this.synth) this.synth = oscillatorSynth(this.ctx);
-		this.kickOffSoundFontLoad(this.ctx);
 		return { ctx: this.ctx, synth: this.synth };
 	}
 
+	private async ensureAudio(): Promise<{ ctx: AudioContext; synth: Synth }> {
+		const { ctx, synth } = this.ensureContext();
+		if (ctx.state === 'suspended') await ctx.resume();
+		// If preload didn't run (or failed because the context wasn't allowed
+		// yet), kick the load off here. Once it resolves, `this.synth` is the
+		// SoundFont-backed synth.
+		void this.kickOffSoundFontLoad();
+		return { ctx, synth: this.synth ?? synth };
+	}
+
 	/**
-	 * Fetch and initialise the bundled SoundFont in the background on the
-	 * first user interaction. The oscillator synth keeps things audible for
-	 * the ~1 second it takes to load; we swap to SoundFont samples as soon
-	 * as they're ready. The next scheduler restart (the effect in +page.svelte
-	 * fires one on every setting change) picks up the new synth automatically.
-	 * On fetch/init failure (offline first run before the service worker has
-	 * cached it) we stay on the oscillator synth.
+	 * Fetch the bundled SoundFont and initialise SpessaSynth on top of the
+	 * existing AudioContext. Idempotent — repeated calls return the same
+	 * promise. On fetch/init failure (e.g. offline before the service worker
+	 * has cached it) we leave the oscillator fallback in place and let a
+	 * later call try again.
 	 */
-	private kickOffSoundFontLoad(ctx: AudioContext): void {
-		if (this.soundFontPromise) return;
+	private kickOffSoundFontLoad(): Promise<Synth> {
+		if (this.soundFontPromise) return this.soundFontPromise;
+		const ctx = this.ctx;
+		if (!ctx) return Promise.reject(new Error('no AudioContext'));
+		this.callbacks.onSoundFontStatus?.('loading');
 		this.soundFontPromise = (async () => {
 			const buffer = await fetchBundledSoundFont();
 			const synth = await createSoundFontSynth({ ctx, soundFontBuffer: buffer });
 			this.synth?.destroy();
 			this.synth = synth;
+			this.callbacks.onSoundFontStatus?.('ready');
 			return synth;
 		})().catch((err) => {
 			console.warn('Bundled SoundFont unavailable, staying on oscillator fallback', err);
 			this.soundFontPromise = null; // allow retry on next ensureAudio
+			this.callbacks.onSoundFontStatus?.('error');
 			throw err;
 		});
+		return this.soundFontPromise;
 	}
 
 	async run(inputs: PlayInputs): Promise<void> {

@@ -167,6 +167,14 @@ button.primary:hover {
 button.primary:active {
 	filter: brightness(0.97);
 }
+button[disabled],
+button[aria-busy='true'] {
+	cursor: not-allowed;
+	opacity: 0.85;
+}
+button[disabled] {
+	filter: grayscale(0.2);
+}
 
 input[type='number'],
 input[type='text'] {

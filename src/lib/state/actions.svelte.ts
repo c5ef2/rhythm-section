@@ -13,9 +13,23 @@ const player = browser
 			onStopped: () => {
 				appState.isPlaying = false;
 				appState.activeIndex = null;
-			}
+			},
+			onSoundFontStatus: (status) => (appState.soundFontStatus = status)
 		})
 	: null;
+
+let preloadStarted = false;
+
+/**
+ * Eagerly create the AudioContext and start fetching the bundled SoundFont
+ * so the synth is ready by the time the user taps Play. Call once on app
+ * mount; subsequent calls are a no-op.
+ */
+export function preloadAudio(): void {
+	if (!player || preloadStarted) return;
+	preloadStarted = true;
+	void player.preload();
+}
 
 function currentInputs() {
 	const s = appState.settings;

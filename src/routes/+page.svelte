@@ -37,6 +37,15 @@
 		reloadOnNewServiceWorker();
 	});
 
+	// Start fetching the bundled SoundFont the moment the app mounts, so the
+	// synth is ready and Play responds instantly instead of going through a
+	// load on first press.
+	$effect(() => {
+		actions.preloadAudio();
+	});
+
+	const playLoading = $derived(appState.soundFontStatus === 'loading');
+
 	// Keep settings snapshot in localStorage whenever they change.
 	$effect(() => {
 		persist($state.snapshot(appState.settings));
@@ -132,8 +141,17 @@
 
 	<section class="card transport">
 		<div class="transport-top">
-			<button class="primary play" type="button" onclick={actions.togglePlay}>
-				{#if appState.isPlaying}
+			<button
+				class="primary play"
+				type="button"
+				onclick={actions.togglePlay}
+				disabled={playLoading}
+				aria-busy={playLoading}
+			>
+				{#if playLoading}
+					<span class="spinner" aria-hidden="true"></span>
+					<span>Loading…</span>
+				{:else if appState.isPlaying}
 					<svg
 						viewBox="0 0 24 24"
 						width="18"
@@ -408,6 +426,20 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
+	}
+	.spinner {
+		display: inline-block;
+		width: 1.05rem;
+		height: 1.05rem;
+		border: 2px solid currentColor;
+		border-top-color: transparent;
+		border-radius: 50%;
+		animation: spinner-rot 0.7s linear infinite;
+	}
+	@keyframes spinner-rot {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	.secondary {
 		background: var(--panel-2);
