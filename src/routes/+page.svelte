@@ -5,6 +5,7 @@
 	import NoteLengthPicker from '$lib/components/NoteLengthPicker.svelte';
 	import { appState } from '$lib/state/app-state.svelte';
 	import * as actions from '$lib/state/actions.svelte';
+	import { environment } from '$lib/state/environment.svelte';
 	import { reloadOnNewServiceWorker } from '$lib/service-worker-client';
 	import { persist } from '$lib/state/settings.svelte';
 	import type { MetronomeDivision, NoteLength } from '$lib/rhythm/types';
@@ -45,6 +46,13 @@
 	});
 
 	const playLoading = $derived(appState.soundFontStatus === 'loading');
+	// In a regular browser tab the user can always copy the URL from the
+	// address bar (we live-sync it), so the Share button only earns its
+	// keep when there's a native share dialog to open. In a PWA install
+	// there is no URL bar at all — keep the button so the user has any
+	// way to send the rhythm out (it falls back to clipboard copy when
+	// navigator.share isn't supported).
+	const showShareButton = $derived(environment.hasShareApi || environment.isStandalone);
 
 	// Keep settings snapshot in localStorage whenever they change.
 	$effect(() => {
@@ -120,31 +128,33 @@
 					Practice reading rhythms with a generated exercise and a metronome.
 				</p>
 			</div>
-			<button
-				type="button"
-				class="share-btn"
-				onclick={actions.shareCurrent}
-				aria-label="Share"
-				title="Share"
-			>
-				<svg
-					width="20"
-					height="20"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.8"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					aria-hidden="true"
+			{#if showShareButton}
+				<button
+					type="button"
+					class="share-btn"
+					onclick={actions.shareCurrent}
+					aria-label="Share"
+					title="Share"
 				>
-					<circle cx="18" cy="5" r="3" />
-					<circle cx="6" cy="12" r="3" />
-					<circle cx="18" cy="19" r="3" />
-					<line x1="8.6" y1="10.5" x2="15.4" y2="6.5" />
-					<line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
-				</svg>
-			</button>
+					<svg
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<circle cx="18" cy="5" r="3" />
+						<circle cx="6" cy="12" r="3" />
+						<circle cx="18" cy="19" r="3" />
+						<line x1="8.6" y1="10.5" x2="15.4" y2="6.5" />
+						<line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+					</svg>
+				</button>
+			{/if}
 		</div>
 	</header>
 
