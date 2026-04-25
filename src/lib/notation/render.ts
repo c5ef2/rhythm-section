@@ -67,6 +67,25 @@ interface TieAttachment {
 	notes: StaveNote[];
 }
 
+/**
+ * Render the same staff into a fresh detached canvas (CANVAS backend) at a
+ * supplied target width. Returns the canvas; the caller is responsible for
+ * disposing or extracting (e.g. canvas.toBlob) it.
+ *
+ * Used by share-image to capture the staff for the share PNG without going
+ * through an SVG → <img> → canvas pipeline (the off-screen <img> doesn't
+ * inherit the page's loaded webfonts and renders glyphs as tofu boxes).
+ */
+export function renderRhythmToCanvas(
+	events: RhythmEvent[],
+	bars: number,
+	availableWidth: number
+): { canvas: HTMLCanvasElement; width: number; height: number } {
+	const canvas = document.createElement('canvas');
+	const dimensions = drawIntoTarget(canvas, Renderer.Backends.CANVAS, events, bars, availableWidth);
+	return { canvas, ...dimensions };
+}
+
 export function renderRhythm(
 	host: HTMLDivElement,
 	events: RhythmEvent[],
@@ -74,93 +93,8 @@ export function renderRhythm(
 	availableWidth: number
 ): RenderResult {
 	host.innerHTML = '';
-	const slices = splitIntoBars(events, bars);
-
-	const voices: Voice[] = [];
-	const noteMatrix: StaveNote[][] = [];
-	const formatters: Formatter[] = [];
-	const minNotesWidths: number[] = [];
-
-	slices.forEach((slice) => {
-		const staveNotes = slice.events.map(toStaveNote);
-		noteMatrix.push(staveNotes);
-
-		const voice = new Voice({ numBeats: BEATS_PER_BAR, beatValue: 4 });
-		voice.setStrict(false);
-		voice.addTickables(staveNotes);
-		voices.push(voice);
-
-		const formatter = new Formatter().joinVoices([voice]);
-		minNotesWidths.push(formatter.preCalculateMinTotalWidth([voice]));
-		formatters.push(formatter);
-	});
-
-	// Below the stack breakpoint and with >1 bar, render bars on separate
-	// lines so each bar gets the full viewport width.
-	const stacked = bars > 1 && availableWidth > 0 && availableWidth < STACK_BREAKPOINT;
-	const rows: number[][] = stacked
-		? slices.map((_, i) => [i])
-		: [slices.map((_, i) => i)];
-
-	const staveWidths = computeStaveWidths(minNotesWidths, rows, availableWidth, stacked);
-	const rowWidths = rows.map((row) => row.reduce((sum, i) => sum + staveWidths[i], 0));
-	const totalWidth = Math.max(...rowWidths) + STAVE_PADDING * 2;
-	const totalHeight = STAVE_HEIGHT * rows.length;
-
-	const renderer = new Renderer(host, Renderer.Backends.SVG);
-	renderer.resize(totalWidth, totalHeight);
-	const ctx = renderer.getContext();
-
-	const staves: Stave[] = new Array(slices.length);
-	rows.forEach((row, rowIdx) => {
-		let x = STAVE_PADDING;
-		const y = 10 + rowIdx * STAVE_HEIGHT;
-		row.forEach((barIndex) => {
-			const stave = new Stave(x, y, staveWidths[barIndex]);
-			const firstOnRow = row[0] === barIndex;
-			// Every stacked row repeats the time signature; side-by-side bars
-			// only show it on the leftmost stave. No clef — this is a pure
-			// rhythm reader, so the saved horizontal space goes to the notes.
-			if (firstOnRow) stave.addTimeSignature('4/4');
-			stave.setContext(ctx).draw();
-			staves[barIndex] = stave;
-			x += staveWidths[barIndex];
-		});
-	});
-
-	const flatNotes: StaveNote[] = [];
-	const flatIndexMap: number[] = [];
-	// Beams and tuplets must be constructed BEFORE the voice is drawn so each
-	// note knows it is beamed and skips rendering its own flag.
-	const perBarBeams: BeamAttachment[][] = [];
-	const perBarTuplets: Tuplet[][] = [];
-	slices.forEach((slice, barIndex) => {
-		const staveNotes = noteMatrix[barIndex];
-		perBarBeams.push(buildBeams(slice.events, staveNotes));
-		perBarTuplets.push(buildTuplets(slice.events, staveNotes));
-	});
-	const firstOnRowSet = new Set<number>(rows.map((row) => row[0]));
-	const barToRow = new Map<number, number>();
-	rows.forEach((row, rowIdx) => row.forEach((barIdx) => barToRow.set(barIdx, rowIdx)));
-	slices.forEach((slice, barIndex) => {
-		const staveNotes = noteMatrix[barIndex];
-		const modifier = firstOnRowSet.has(barIndex) ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
-		const notesWidth = staveWidths[barIndex] - modifier;
-		formatters[barIndex].format([voices[barIndex]], notesWidth);
-		voices[barIndex].draw(ctx, staves[barIndex]);
-
-		perBarBeams[barIndex].forEach(({ beam }) => beam.setContext(ctx).draw());
-		perBarTuplets[barIndex].forEach((t) => t.setContext(ctx).draw());
-
-		flatNotes.push(...staveNotes);
-		flatIndexMap.push(...slice.indexes);
-	});
-
-	// Ties: within a row a normal StaveTie spans the two notes; across rows we
-	// draw two "half-ties" (one trailing off the previous row, one leading into
-	// the next row) so there's no weird diagonal line between stacked bars.
-	const ties = buildFlatTies(events, flatNotes, flatIndexMap, slices, barToRow);
-	ties.forEach(({ tie }) => tie.setContext(ctx).draw());
+	const drawn = drawIntoTarget(host, Renderer.Backends.SVG, events, bars, availableWidth);
+	const { flatNotes, flatIndexMap } = drawn;
 
 	const noteElements: SVGElement[] = [];
 	const highlightElements: SVGElement[][] = [];
@@ -188,6 +122,109 @@ export function renderRhythm(
 	// highlight set — those are shared across multiple notes and would light
 	// up the neighbours too. Per-note stems are tracked above.
 	return { noteElements, highlightElements };
+}
+
+interface DrawOutcome {
+	flatNotes: StaveNote[];
+	flatIndexMap: number[];
+	width: number;
+	height: number;
+}
+
+/**
+ * Shared rendering pipeline. VexFlow does the same draw calls regardless of
+ * whether the target is an HTMLDivElement (SVG backend) or HTMLCanvasElement
+ * (canvas backend), so this function builds the layout, voices, beams, ties
+ * and tuplets once and dispatches them through whichever Renderer backend
+ * was requested. The DOM-only post-processing (data attributes, highlight
+ * elements) lives in renderRhythm above.
+ */
+function drawIntoTarget(
+	target: HTMLDivElement | HTMLCanvasElement,
+	backend: number,
+	events: RhythmEvent[],
+	bars: number,
+	availableWidth: number
+): DrawOutcome {
+	const slices = splitIntoBars(events, bars);
+
+	const voices: Voice[] = [];
+	const noteMatrix: StaveNote[][] = [];
+	const formatters: Formatter[] = [];
+	const minNotesWidths: number[] = [];
+
+	slices.forEach((slice) => {
+		const staveNotes = slice.events.map(toStaveNote);
+		noteMatrix.push(staveNotes);
+
+		const voice = new Voice({ numBeats: BEATS_PER_BAR, beatValue: 4 });
+		voice.setStrict(false);
+		voice.addTickables(staveNotes);
+		voices.push(voice);
+
+		const formatter = new Formatter().joinVoices([voice]);
+		minNotesWidths.push(formatter.preCalculateMinTotalWidth([voice]));
+		formatters.push(formatter);
+	});
+
+	const stacked = bars > 1 && availableWidth > 0 && availableWidth < STACK_BREAKPOINT;
+	const rows: number[][] = stacked
+		? slices.map((_, i) => [i])
+		: [slices.map((_, i) => i)];
+
+	const staveWidths = computeStaveWidths(minNotesWidths, rows, availableWidth, stacked);
+	const rowWidths = rows.map((row) => row.reduce((sum, i) => sum + staveWidths[i], 0));
+	const totalWidth = Math.max(...rowWidths) + STAVE_PADDING * 2;
+	const totalHeight = STAVE_HEIGHT * rows.length;
+
+	const renderer = new Renderer(target, backend);
+	renderer.resize(totalWidth, totalHeight);
+	const ctx = renderer.getContext();
+
+	const staves: Stave[] = new Array(slices.length);
+	rows.forEach((row, rowIdx) => {
+		let x = STAVE_PADDING;
+		const y = 10 + rowIdx * STAVE_HEIGHT;
+		row.forEach((barIndex) => {
+			const stave = new Stave(x, y, staveWidths[barIndex]);
+			const firstOnRow = row[0] === barIndex;
+			if (firstOnRow) stave.addTimeSignature('4/4');
+			stave.setContext(ctx).draw();
+			staves[barIndex] = stave;
+			x += staveWidths[barIndex];
+		});
+	});
+
+	const flatNotes: StaveNote[] = [];
+	const flatIndexMap: number[] = [];
+	const perBarBeams: BeamAttachment[][] = [];
+	const perBarTuplets: Tuplet[][] = [];
+	slices.forEach((slice, barIndex) => {
+		const staveNotes = noteMatrix[barIndex];
+		perBarBeams.push(buildBeams(slice.events, staveNotes));
+		perBarTuplets.push(buildTuplets(slice.events, staveNotes));
+	});
+	const firstOnRowSet = new Set<number>(rows.map((row) => row[0]));
+	const barToRow = new Map<number, number>();
+	rows.forEach((row, rowIdx) => row.forEach((barIdx) => barToRow.set(barIdx, rowIdx)));
+	slices.forEach((slice, barIndex) => {
+		const staveNotes = noteMatrix[barIndex];
+		const modifier = firstOnRowSet.has(barIndex) ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
+		const notesWidth = staveWidths[barIndex] - modifier;
+		formatters[barIndex].format([voices[barIndex]], notesWidth);
+		voices[barIndex].draw(ctx, staves[barIndex]);
+
+		perBarBeams[barIndex].forEach(({ beam }) => beam.setContext(ctx).draw());
+		perBarTuplets[barIndex].forEach((t) => t.setContext(ctx).draw());
+
+		flatNotes.push(...staveNotes);
+		flatIndexMap.push(...slice.indexes);
+	});
+
+	const ties = buildFlatTies(events, flatNotes, flatIndexMap, slices, barToRow);
+	ties.forEach(({ tie }) => tie.setContext(ctx).draw());
+
+	return { flatNotes, flatIndexMap, width: totalWidth, height: totalHeight };
 }
 
 /**

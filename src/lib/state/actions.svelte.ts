@@ -191,11 +191,11 @@ let cachedShareFile: File | null = null;
 export async function captureLatestShareFile(): Promise<void> {
 	if (!browser) return;
 	try {
-		const image = await captureStaffImage();
+		const image = await captureStaffImage(captureInput());
 		cachedShareFile = new File([image.png], 'rhythm-section.png', { type: 'image/png' });
 	} catch (err) {
 		// 'staff not rendered yet' is normal during first paint; the next
-		// rhythm-change effect will retry once the SVG is in the DOM.
+		// rhythm-change effect will retry once the events are in place.
 		if (err instanceof StaffNotRenderedError) return;
 		console.warn('captureStaffImage failed', err);
 	}
@@ -222,13 +222,16 @@ export function shareCurrent(): void {
 	const url = currentShareUrl();
 
 	const file = cachedShareFile;
+	// Don't repeat the URL in `text` — most share targets auto-link the URL
+	// anyway, and the previous `text: url, url` combo made iMessage etc.
+	// show the link twice (once as the message body, once as a link card).
 	const candidates: ShareData[] = file
 		? [
-				{ title: 'Rhythm Section', text: url, url, files: [file] },
+				{ title: 'Rhythm Section', url, files: [file] },
 				{ title: 'Rhythm Section', files: [file] },
-				{ title: 'Rhythm Section', text: url, url }
+				{ title: 'Rhythm Section', url }
 			]
-		: [{ title: 'Rhythm Section', text: url, url }];
+		: [{ title: 'Rhythm Section', url }];
 
 	const navAny = navigator as unknown as {
 		share?: (d: ShareData) => Promise<void>;
@@ -272,5 +275,9 @@ async function runShareSequence(candidates: ShareData[], url: string): Promise<v
 
 export async function refreshShareImage(): Promise<void> {
 	if (!browser) return;
-	await updateOgImage();
+	await updateOgImage(captureInput());
+}
+
+function captureInput() {
+	return { events: appState.rhythm.events, bars: appState.settings.bars };
 }
