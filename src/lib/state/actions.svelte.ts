@@ -220,10 +220,6 @@ export async function captureLatestShareFile(): Promise<void> {
 export function shareCurrent(): void {
 	if (!browser) return;
 	const url = currentShareUrl();
-	const nav = navigator as unknown as {
-		share?: (d: ShareData) => Promise<void>;
-		canShare?: (d: ShareData) => boolean;
-	};
 
 	const file = cachedShareFile;
 	const candidates: ShareData[] = file
@@ -234,24 +230,37 @@ export function shareCurrent(): void {
 			]
 		: [{ title: 'Rhythm Section', text: url, url }];
 
-	const share = nav.share;
-	if (!share) {
+	const navAny = navigator as unknown as {
+		share?: (d: ShareData) => Promise<void>;
+		canShare?: (d: ShareData) => boolean;
+	};
+	if (typeof navAny.share !== 'function') {
 		void navigator.clipboard.writeText(url);
 		return;
 	}
 
-	void runShareSequence({ share, canShare: nav.canShare }, candidates, url);
+	void runShareSequence(candidates, url);
 }
 
-async function runShareSequence(
-	nav: { share: (d: ShareData) => Promise<void>; canShare?: (d: ShareData) => boolean },
-	candidates: ShareData[],
-	url: string
-): Promise<void> {
+async function runShareSequence(candidates: ShareData[], url: string): Promise<void> {
+	const navAny = navigator as unknown as {
+		share?: (d: ShareData) => Promise<void>;
+		canShare?: (d: ShareData) => boolean;
+	};
 	for (const payload of candidates) {
-		if (payload.files && nav.canShare && !nav.canShare(payload)) continue;
+		// canShare and share must be invoked with `navigator` as their this
+		// context — Safari throws "Can only call Navigator.canShare on
+		// instances of Navigator" if you destructure them off and call them
+		// as plain functions.
+		if (
+			payload.files &&
+			typeof navAny.canShare === 'function' &&
+			!navAny.canShare.call(navigator, payload)
+		) {
+			continue;
+		}
 		try {
-			await nav.share(payload);
+			await navAny.share!.call(navigator, payload);
 			return;
 		} catch (err) {
 			if ((err as DOMException)?.name === 'AbortError') return;

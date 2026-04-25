@@ -16,12 +16,25 @@
 
 	$effect(() => {
 		if (!host) return;
+		// Defer the state write into a microtask + rAF so the resulting
+		// VexFlow re-render doesn't run inside the same layout pass that
+		// triggered the resize — that combination is what produces the
+		// "ResizeObserver loop completed with undelivered notifications"
+		// console warning.
+		let raf = 0;
 		const observer = new ResizeObserver((entries) => {
 			const w = entries[0]?.contentRect.width ?? 0;
-			if (w > 0) availableWidth = w;
+			if (w <= 0) return;
+			cancelAnimationFrame(raf);
+			raf = requestAnimationFrame(() => {
+				availableWidth = w;
+			});
 		});
 		observer.observe(host);
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			cancelAnimationFrame(raf);
+		};
 	});
 
 	$effect(() => {
