@@ -4,7 +4,17 @@
  *
  * The PNG is intentionally upscaled and padded to a social-friendly aspect
  * ratio so the file looks good when message apps render the preview.
+ *
+ * VexFlow draws noteheads, rests, time signatures etc as Bravura/Academico
+ * font glyphs. When the SVG is rasterised through an `<img>`, that image's
+ * own document doesn't share the page's loaded webfonts, so glyphs come out
+ * as tofu rectangles. We work around that by reading the font data URIs back
+ * from `Font.getURLForFont(...)` (vexflow's main entry already called
+ * `Font.load(name, dataUri, ...)`) and embedding them as `@font-face` rules
+ * inside the captured SVG itself.
  */
+
+import { Font } from 'vexflow';
 
 const TARGET_WIDTH = 1200; // social-friendly preview size
 const HORIZONTAL_PADDING = 40;
@@ -53,12 +63,31 @@ export async function captureStaffImage(): Promise<StaffImage> {
 
 	const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${TARGET_WIDTH}" height="${outerHeight}" viewBox="0 0 ${TARGET_WIDTH} ${outerHeight}">
+	${vexflowFontFaces()}
 	<rect width="100%" height="100%" fill="#ffffff"/>
 	<g transform="translate(${HORIZONTAL_PADDING} ${offsetY})">${serializeInner(cloned)}</g>
 </svg>`;
 
 	const png = await svgToPng(svg, TARGET_WIDTH, outerHeight);
 	return { svg, png, width: TARGET_WIDTH, height: outerHeight };
+}
+
+/**
+ * Build a `<style>` block with @font-face rules for every vexflow-managed
+ * music font so the rasterised SVG renders glyphs instead of tofu.
+ */
+function vexflowFontFaces(): string {
+	const names = ['Bravura', 'Academico'];
+	const rules: string[] = [];
+	for (const name of names) {
+		const url = Font.getURLForFont(name);
+		if (!url) continue;
+		rules.push(
+			`@font-face { font-family: '${name}'; src: url(${url}) format('woff2'); font-display: block; }`
+		);
+	}
+	if (rules.length === 0) return '';
+	return `<style>${rules.join('\n')}</style>`;
 }
 
 function serializeInner(svgEl: SVGSVGElement): string {

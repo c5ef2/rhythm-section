@@ -1,7 +1,11 @@
 import { browser } from '$app/environment';
 import { bpmStepDown, bpmStepUp, snapBpm } from '../audio/bpm';
 import { Player } from '../audio/player';
-import { captureStaffImage, updateOgImage } from '../notation/share-image';
+import {
+	captureStaffImage,
+	StaffNotRenderedError,
+	updateOgImage
+} from '../notation/share-image';
 import { randomSeed } from '../rng/seeded';
 import type { MetronomeDivision, NoteLength } from '../rhythm/types';
 import { appState } from './app-state.svelte';
@@ -175,6 +179,29 @@ export function updateUrlFromState(): void {
 }
 
 /**
+ * Latest captured share file, refreshed in the background on every rhythm
+ * change so the click handler can call navigator.share synchronously without
+ * waiting on canvas rasterisation. iOS Safari is strict about user-gesture
+ * propagation across awaits — calling `await captureStaffImage()` first and
+ * then `nav.share` afterwards makes iOS treat the share as out-of-gesture
+ * and may silently drop the attached file from the share sheet preview.
+ */
+let cachedShareFile: File | null = null;
+
+export async function captureLatestShareFile(): Promise<void> {
+	if (!browser) return;
+	try {
+		const image = await captureStaffImage();
+		cachedShareFile = new File([image.png], 'rhythm-section.png', { type: 'image/png' });
+	} catch (err) {
+		// 'staff not rendered yet' is normal during first paint; the next
+		// rhythm-change effect will retry once the SVG is in the DOM.
+		if (err instanceof StaffNotRenderedError) return;
+		console.warn('captureStaffImage failed', err);
+	}
+}
+
+/**
  * Share the current exercise. Uses navigator.share when available so mobile
  * users get the native share sheet with the rhythm's PNG attached; otherwise
  * falls back to copying the link to the clipboard.
@@ -185,8 +212,12 @@ export function updateUrlFromState(): void {
  * Messages, for example, sometimes silently drops attached files when a URL
  * is also present; on those targets file-only is the only way the staff
  * preview actually rides along.
+ *
+ * Synchronous up to the first nav.share call so iOS preserves the click's
+ * user gesture; subsequent fallbacks may run after the gesture has expired
+ * but only matter when the platform rejects the first shape.
  */
-export async function shareCurrent(): Promise<void> {
+export function shareCurrent(): void {
 	if (!browser) return;
 	const url = currentShareUrl();
 	const nav = navigator as unknown as {
@@ -194,9 +225,7 @@ export async function shareCurrent(): Promise<void> {
 		canShare?: (d: ShareData) => boolean;
 	};
 
-	const file = await captureShareFile();
-	if (!file) console.warn('share: no staff image captured, sharing URL only');
-
+	const file = cachedShareFile;
 	const candidates: ShareData[] = file
 		? [
 				{ title: 'Rhythm Section', text: url, url, files: [file] },
@@ -205,33 +234,31 @@ export async function shareCurrent(): Promise<void> {
 			]
 		: [{ title: 'Rhythm Section', text: url, url }];
 
-	if (nav.share) {
-		for (const payload of candidates) {
-			if (payload.files && nav.canShare && !nav.canShare(payload)) continue;
-			try {
-				await nav.share(payload);
-				return;
-			} catch (err) {
-				if ((err as DOMException)?.name === 'AbortError') return;
-				console.warn(
-					'share attempt failed',
-					Object.keys(payload).join('+'),
-					err
-				);
-			}
+	const share = nav.share;
+	if (!share) {
+		void navigator.clipboard.writeText(url);
+		return;
+	}
+
+	void runShareSequence({ share, canShare: nav.canShare }, candidates, url);
+}
+
+async function runShareSequence(
+	nav: { share: (d: ShareData) => Promise<void>; canShare?: (d: ShareData) => boolean },
+	candidates: ShareData[],
+	url: string
+): Promise<void> {
+	for (const payload of candidates) {
+		if (payload.files && nav.canShare && !nav.canShare(payload)) continue;
+		try {
+			await nav.share(payload);
+			return;
+		} catch (err) {
+			if ((err as DOMException)?.name === 'AbortError') return;
+			console.warn('share attempt failed', Object.keys(payload).join('+'), err);
 		}
 	}
 	await navigator.clipboard.writeText(url);
-}
-
-async function captureShareFile(): Promise<File | undefined> {
-	try {
-		const image = await captureStaffImage();
-		return new File([image.png], 'rhythm-section.png', { type: 'image/png' });
-	} catch (err) {
-		console.warn('captureStaffImage failed', err);
-		return undefined;
-	}
 }
 
 export async function refreshShareImage(): Promise<void> {

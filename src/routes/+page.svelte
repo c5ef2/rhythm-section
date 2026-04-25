@@ -92,14 +92,19 @@
 		});
 	});
 
-	// Keep the og:image meta in sync with the visible staff so JS-aware link
-	// previews (and a navigator.share fallback) show the current rhythm.
+	// Keep the og:image meta and the cached share file in sync with the
+	// visible staff. The cached file lets shareCurrent call navigator.share
+	// synchronously inside the click gesture (iOS Safari otherwise drops
+	// the attached file when a sufficient async gap precedes nav.share).
 	$effect(() => {
 		void appState.rhythm.events;
 		void appState.settings.bars;
 		untrack(() => {
 			// Wait a frame for VexFlow to finish drawing before capturing.
-			requestAnimationFrame(() => actions.refreshShareImage());
+			requestAnimationFrame(() => {
+				void actions.refreshShareImage();
+				void actions.captureLatestShareFile();
+			});
 		});
 	});
 
