@@ -10,6 +10,15 @@ const TARGET_WIDTH = 1200; // social-friendly preview size
 const HORIZONTAL_PADDING = 40;
 const VERTICAL_PADDING = 80;
 const MIN_OUTPUT_HEIGHT = 600;
+const STAFF_SELECTOR = '.staff-card svg';
+const STAFF_WAIT_MS = 800;
+
+export class StaffNotRenderedError extends Error {
+	constructor() {
+		super('staff not rendered yet');
+		this.name = 'StaffNotRenderedError';
+	}
+}
 
 export interface StaffImage {
 	svg: string;
@@ -19,8 +28,8 @@ export interface StaffImage {
 }
 
 export async function captureStaffImage(): Promise<StaffImage> {
-	const svgEl = document.querySelector<SVGSVGElement>('.staff-card svg');
-	if (!svgEl) throw new Error('no staff rendered');
+	const svgEl = await waitForStaff();
+	if (!svgEl) throw new StaffNotRenderedError();
 
 	const naturalWidth = svgEl.clientWidth || svgEl.viewBox.baseVal?.width || 800;
 	const naturalHeight = svgEl.clientHeight || svgEl.viewBox.baseVal?.height || 180;
@@ -92,6 +101,26 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
+ * Poll for the staff SVG for up to STAFF_WAIT_MS. The Staff component's
+ * VexFlow render is gated on a ResizeObserver firing, so on first paint
+ * (especially with a settings-loaded-from-hash route) the SVG isn't there
+ * the moment effects run. Returning null lets the caller treat that as a
+ * silent "try again later" instead of a hard error.
+ */
+async function waitForStaff(): Promise<SVGSVGElement | null> {
+	if (typeof document === 'undefined') return null;
+	const direct = document.querySelector<SVGSVGElement>(STAFF_SELECTOR);
+	if (direct) return direct;
+	const deadline = performance.now() + STAFF_WAIT_MS;
+	while (performance.now() < deadline) {
+		await new Promise<void>((r) => requestAnimationFrame(() => r()));
+		const el = document.querySelector<SVGSVGElement>(STAFF_SELECTOR);
+		if (el) return el;
+	}
+	return null;
+}
+
+/**
  * Best-effort: write the current staff into the og:image / twitter:image
  * meta tags so JS-aware previews pick it up. Static-site scrapers that
  * don't execute JS only see the initial HTML, so this is supplementary —
@@ -105,6 +134,10 @@ export async function updateOgImage(): Promise<void> {
 		upsertMeta('name', 'twitter:image', dataUrl);
 		upsertMeta('name', 'twitter:card', 'summary_large_image');
 	} catch (err) {
+		// 'staff not rendered yet' is normal during initial paint — the next
+		// rhythm-change effect will have a real SVG and refresh the meta.
+		// Anything else is a real failure worth surfacing.
+		if (err instanceof StaffNotRenderedError) return;
 		console.warn('updateOgImage failed', err);
 	}
 }
