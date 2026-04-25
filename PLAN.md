@@ -233,8 +233,8 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 - **Share URL** format: `#s=<base64url(JSON(SharedState))>`.
   - Encodes every setting + the rhythm seed.
   - Decode is shape-validated by `isSharedState`. Migration shims in `decodeShare` set defaults for missing newer fields (`rhythmAudio` → `false`, `metronome.countedBeats` → `[true, true, true, true]`) and strip dropped fields (`loop`).
-  - The Share button (icon-only, top-right of the header) uses `navigator.share()` when supported. With `navigator.canShare({ files })`, the current staff is captured to a PNG and attached to the share payload (Chrome Android, Safari iOS). Falls back to copying the URL to the clipboard.
-  - `og:image` / `twitter:image` / `twitter:card` meta are dynamically updated to a data URL of the staff whenever the rhythm changes (best-effort: pure JS-less scrapers only see the initial HTML, so this matters mainly for JS-aware previews and the `navigator.share` fallback file).
+  - The Share button (icon-only, top-right of the header) uses `navigator.share()` when supported. The current staff is rendered to a 1200-px-wide PNG with white background + padding (`captureStaffImage`) and the share function tries three payload shapes in order: `{url, text, files}`, `{files}` only, and `{url, text}`. iOS Messages sometimes drops attached files when a URL is also present — the file-only fallback covers that path. Falls back to copying the URL to the clipboard.
+  - `og:image` / `twitter:image` / `twitter:card` meta are dynamically updated to a data URL of the staff PNG whenever the rhythm changes (best-effort: JS-less scrapers only see the initial HTML, so this matters mainly for JS-aware previews; the canonical preview source for shared messages is the file attached to `navigator.share`).
 
 ### 3.11 Theme & visual system
 

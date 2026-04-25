@@ -166,6 +166,13 @@ export function currentShareUrl(): string {
  * Share the current exercise. Uses navigator.share when available so mobile
  * users get the native share sheet with the rhythm's PNG attached; otherwise
  * falls back to copying the link to the clipboard.
+ *
+ * Tries several payload shapes in order so the most-preferred combination
+ * (URL + image file) is attempted first, falling back to file-only and then
+ * URL-only when the platform / target app rejects the richer one. iOS
+ * Messages, for example, sometimes silently drops attached files when a URL
+ * is also present; on those targets file-only is the only way the staff
+ * preview actually rides along.
  */
 export async function shareCurrent(): Promise<void> {
 	if (!browser) return;
@@ -175,31 +182,44 @@ export async function shareCurrent(): Promise<void> {
 		canShare?: (d: ShareData) => boolean;
 	};
 
-	let files: File[] | undefined;
-	try {
-		const image = await captureStaffImage();
-		files = [new File([image.png], 'rhythm.png', { type: 'image/png' })];
-	} catch {
-		files = undefined;
-	}
+	const file = await captureShareFile();
+	if (!file) console.warn('share: no staff image captured, sharing URL only');
+
+	const candidates: ShareData[] = file
+		? [
+				{ title: 'Rhythm Section', text: url, url, files: [file] },
+				{ title: 'Rhythm Section', files: [file] },
+				{ title: 'Rhythm Section', text: url, url }
+			]
+		: [{ title: 'Rhythm Section', text: url, url }];
 
 	if (nav.share) {
-		const payload: ShareData = {
-			title: 'Rhythm Section',
-			text: 'Rhythm practice exercise',
-			url
-		};
-		const canAttach = files && nav.canShare?.({ files });
-		if (canAttach) payload.files = files;
-		try {
-			await nav.share(payload);
-			return;
-		} catch (err) {
-			if ((err as DOMException)?.name === 'AbortError') return;
-			console.warn('share failed, falling back to clipboard', err);
+		for (const payload of candidates) {
+			if (payload.files && nav.canShare && !nav.canShare(payload)) continue;
+			try {
+				await nav.share(payload);
+				return;
+			} catch (err) {
+				if ((err as DOMException)?.name === 'AbortError') return;
+				console.warn(
+					'share attempt failed',
+					Object.keys(payload).join('+'),
+					err
+				);
+			}
 		}
 	}
 	await navigator.clipboard.writeText(url);
+}
+
+async function captureShareFile(): Promise<File | undefined> {
+	try {
+		const image = await captureStaffImage();
+		return new File([image.png], 'rhythm-section.png', { type: 'image/png' });
+	} catch (err) {
+		console.warn('captureStaffImage failed', err);
+		return undefined;
+	}
 }
 
 export async function refreshShareImage(): Promise<void> {
