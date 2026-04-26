@@ -222,22 +222,31 @@ export function shareCurrent(): void {
 	const url = currentShareUrl();
 
 	const file = cachedShareFile;
-	// Don't repeat the URL in `text` — most share targets auto-link the URL
-	// anyway, and the previous `text: url, url` combo made iMessage etc.
-	// show the link twice (once as the message body, once as a link card).
+	// MDN guidance: when sharing files, put the URL inside `text` instead
+	// of `url`. The combination of `files` + `url` is unreliable — many
+	// platforms (iOS Messages especially) drop the file when both are
+	// present. With the URL in `text`, the receiving app still auto-links
+	// it AND the file rides along.
 	const candidates: ShareData[] = file
 		? [
-				{ title: 'Rhythm Section', url, files: [file] },
+				{ title: 'Rhythm Section', text: url, files: [file] },
 				{ title: 'Rhythm Section', files: [file] },
-				{ title: 'Rhythm Section', url }
+				{ title: 'Rhythm Section', text: url, url }
 			]
-		: [{ title: 'Rhythm Section', url }];
+		: [{ title: 'Rhythm Section', text: url, url }];
+
+	console.log('[share] cachedShareFile:', describeFile(file));
+	console.log(
+		'[share] candidates:',
+		candidates.map((c, i) => `#${i} ${describePayload(c)}`)
+	);
 
 	const navAny = navigator as unknown as {
 		share?: (d: ShareData) => Promise<void>;
 		canShare?: (d: ShareData) => boolean;
 	};
 	if (typeof navAny.share !== 'function') {
+		console.log('[share] navigator.share unsupported, falling back to clipboard');
 		void navigator.clipboard.writeText(url);
 		return;
 	}
@@ -245,31 +254,55 @@ export function shareCurrent(): void {
 	void runShareSequence(candidates, url);
 }
 
+function describeFile(file: File | null): string {
+	if (!file) return 'null';
+	return `File(name=${file.name}, type=${file.type}, size=${file.size})`;
+}
+
+function describePayload(p: ShareData): string {
+	const parts: string[] = [];
+	if (p.title) parts.push(`title=${JSON.stringify(p.title)}`);
+	if (p.text) parts.push(`text=${JSON.stringify(p.text)}`);
+	if (p.url) parts.push(`url=${JSON.stringify(p.url)}`);
+	if (p.files?.length) {
+		parts.push(`files=[${p.files.map((f) => describeFile(f as File)).join(', ')}]`);
+	}
+	return `{ ${parts.join(', ')} }`;
+}
+
 async function runShareSequence(candidates: ShareData[], url: string): Promise<void> {
 	const navAny = navigator as unknown as {
 		share?: (d: ShareData) => Promise<void>;
 		canShare?: (d: ShareData) => boolean;
 	};
-	for (const payload of candidates) {
+	for (let i = 0; i < candidates.length; i++) {
+		const payload = candidates[i];
 		// canShare and share must be invoked with `navigator` as their this
 		// context — Safari throws "Can only call Navigator.canShare on
 		// instances of Navigator" if you destructure them off and call them
 		// as plain functions.
 		if (
 			payload.files &&
-			typeof navAny.canShare === 'function' &&
-			!navAny.canShare.call(navigator, payload)
+			typeof navAny.canShare === 'function'
 		) {
-			continue;
+			const ok = navAny.canShare.call(navigator, payload);
+			console.log(`[share] candidate #${i} canShare =`, ok);
+			if (!ok) continue;
 		}
 		try {
+			console.log(`[share] invoking nav.share with candidate #${i}`);
 			await navAny.share!.call(navigator, payload);
+			console.log(`[share] candidate #${i} resolved`);
 			return;
 		} catch (err) {
-			if ((err as DOMException)?.name === 'AbortError') return;
-			console.warn('share attempt failed', Object.keys(payload).join('+'), err);
+			if ((err as DOMException)?.name === 'AbortError') {
+				console.log(`[share] candidate #${i} aborted by user`);
+				return;
+			}
+			console.warn(`[share] candidate #${i} failed`, err);
 		}
 	}
+	console.log('[share] every candidate failed; copying URL to clipboard');
 	await navigator.clipboard.writeText(url);
 }
 

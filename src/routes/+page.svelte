@@ -38,6 +38,19 @@
 		reloadOnNewServiceWorker();
 	});
 
+	// Hidden share-image debug pane — run `showShareDebug()` in the console
+	// to flip the captured SVG + rasterised canvas into view.
+	$effect(() => {
+		(window as unknown as { showShareDebug?: () => void }).showShareDebug = () => {
+			const host = document.getElementById('share-image-debug');
+			if (host) host.style.display = 'block';
+		};
+		(window as unknown as { hideShareDebug?: () => void }).hideShareDebug = () => {
+			const host = document.getElementById('share-image-debug');
+			if (host) host.style.display = 'none';
+		};
+	});
+
 	// Start fetching the bundled SoundFont the moment the app mounts, so the
 	// synth is ready and Play responds instantly instead of going through a
 	// load on first press.
