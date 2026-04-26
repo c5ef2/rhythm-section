@@ -222,18 +222,18 @@ export function shareCurrent(): void {
 	const url = currentShareUrl();
 
 	const file = cachedShareFile;
-	// MDN guidance: when sharing files, put the URL inside `text` instead
-	// of `url`. The combination of `files` + `url` is unreliable — many
-	// platforms (iOS Messages especially) drop the file when both are
-	// present. With the URL in `text`, the receiving app still auto-links
-	// it AND the file rides along.
+	// `text` shows up as the literal message body in apps like iMessage —
+	// putting a long share URL there made it dominate the message. Use
+	// `url` instead: target apps render it as a link card. If the platform
+	// rejects {url, files} together (some do drop the file), the file-only
+	// candidate is still tried before falling back to a URL-only share.
 	const candidates: ShareData[] = file
 		? [
-				{ title: 'Rhythm Section', text: url, files: [file] },
+				{ title: 'Rhythm Section', url, files: [file] },
 				{ title: 'Rhythm Section', files: [file] },
-				{ title: 'Rhythm Section', text: url, url }
+				{ title: 'Rhythm Section', url }
 			]
-		: [{ title: 'Rhythm Section', text: url, url }];
+		: [{ title: 'Rhythm Section', url }];
 
 	console.log('[share] cachedShareFile:', describeFile(file));
 	console.log(
