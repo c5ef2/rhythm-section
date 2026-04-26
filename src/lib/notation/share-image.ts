@@ -64,35 +64,23 @@ export async function captureStaffImage(_input: CaptureInput): Promise<StaffImag
 		}
 	}
 
-	// VexFlow's outer <svg> carries presentation attrs that every child
-	// inherits (font-family="Bravura,Academico", font-size, fill="black",
-	// stroke="black"). Stripping it and serialising just the children loses
-	// those defaults — paths come out as black blocks, text disappears.
-	// Clone the live SVG, normalise its size, ensure the defaults are
-	// present, then nest the whole thing inside the wrapper SVG.
-	const cloned = svgEl.cloneNode(true) as SVGSVGElement;
+	// VexFlow's outer <svg> carries presentation attrs every child inherits
+	// (font-family="Bravura,Academico", font-size, fill="black", stroke="black").
+	// Nesting that <svg> inside another <svg> + a <g scale(s)> made canvg
+	// stretch the y-axis (inner viewBox + outer transform interaction is
+	// fragile across renderers). Instead: copy the original svg's children
+	// into a wrapping <g> and re-apply the inherited presentation attrs
+	// directly on that group, so attribute inheritance reaches every child.
 	const naturalWidth =
-		Number(cloned.getAttribute('width')) ||
-		cloned.viewBox.baseVal?.width ||
+		Number(svgEl.getAttribute('width')) ||
+		svgEl.viewBox.baseVal?.width ||
 		svgEl.clientWidth ||
 		800;
 	const naturalHeight =
-		Number(cloned.getAttribute('height')) ||
-		cloned.viewBox.baseVal?.height ||
+		Number(svgEl.getAttribute('height')) ||
+		svgEl.viewBox.baseVal?.height ||
 		svgEl.clientHeight ||
 		180;
-	cloned.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-	cloned.setAttribute('width', String(naturalWidth));
-	cloned.setAttribute('height', String(naturalHeight));
-	cloned.setAttribute('viewBox', `0 0 ${naturalWidth} ${naturalHeight}`);
-	// Defaults — set them only if missing so we don't override anything the
-	// renderer already specified.
-	if (!cloned.getAttribute('fill')) cloned.setAttribute('fill', 'black');
-	if (!cloned.getAttribute('stroke')) cloned.setAttribute('stroke', 'black');
-	if (!cloned.getAttribute('font-family')) {
-		cloned.setAttribute('font-family', 'Bravura, Academico, serif');
-	}
-	if (!cloned.getAttribute('font-size')) cloned.setAttribute('font-size', '10pt');
 
 	const innerWidth = TARGET_WIDTH - HORIZONTAL_PADDING * 2;
 	const scale = innerWidth / naturalWidth;
@@ -100,11 +88,17 @@ export async function captureStaffImage(_input: CaptureInput): Promise<StaffImag
 	const outerHeight = Math.max(MIN_OUTPUT_HEIGHT, drawnHeight + VERTICAL_PADDING * 2);
 	const offsetY = (outerHeight - drawnHeight) / 2;
 
-	const innerXml = new XMLSerializer().serializeToString(cloned);
+	// Serialise just the children of the live svg.
+	const childXml = Array.from(svgEl.children)
+		.map((c) => new XMLSerializer().serializeToString(c))
+		.join('');
+
+	const inheritedAttrs = inheritedPresentation(svgEl);
+
 	const wrappedSvg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${TARGET_WIDTH}" height="${outerHeight}" viewBox="0 0 ${TARGET_WIDTH} ${outerHeight}">
 	<rect width="100%" height="100%" fill="#ffffff"/>
-	<g transform="translate(${HORIZONTAL_PADDING} ${offsetY}) scale(${scale})">${innerXml}</g>
+	<g transform="translate(${HORIZONTAL_PADDING} ${offsetY}) scale(${scale})" ${inheritedAttrs}>${childXml}</g>
 </svg>`;
 
 	const canvas = document.createElement('canvas');
@@ -195,6 +189,27 @@ export async function updateOgImage(input: CaptureInput): Promise<void> {
 		if (err instanceof StaffNotRenderedError) return;
 		console.warn('updateOgImage failed', err);
 	}
+}
+
+function inheritedPresentation(svgEl: SVGSVGElement): string {
+	// VexFlow sets these on the outer <svg>; they propagate to every child
+	// via SVG attribute inheritance. We re-attach them to the wrapping <g>
+	// in the captured SVG so the children render the same once detached.
+	const candidates: Array<[string, string]> = [
+		['fill', svgEl.getAttribute('fill') ?? 'black'],
+		['stroke', svgEl.getAttribute('stroke') ?? 'black'],
+		['stroke-width', svgEl.getAttribute('stroke-width') ?? '1'],
+		[
+			'font-family',
+			svgEl.getAttribute('font-family') ?? 'Bravura, Academico, serif'
+		],
+		['font-size', svgEl.getAttribute('font-size') ?? '10pt'],
+		['font-weight', svgEl.getAttribute('font-weight') ?? 'normal'],
+		['font-style', svgEl.getAttribute('font-style') ?? 'normal']
+	];
+	return candidates
+		.map(([k, v]) => `${k}="${v.replace(/"/g, '&quot;')}"`)
+		.join(' ');
 }
 
 /**
