@@ -235,18 +235,11 @@ export function shareCurrent(): void {
 			]
 		: [{ title: 'Rhythm Section', url }];
 
-	console.log('[share] cachedShareFile:', describeFile(file));
-	console.log(
-		'[share] candidates:',
-		candidates.map((c, i) => `#${i} ${describePayload(c)}`)
-	);
-
 	const navAny = navigator as unknown as {
 		share?: (d: ShareData) => Promise<void>;
 		canShare?: (d: ShareData) => boolean;
 	};
 	if (typeof navAny.share !== 'function') {
-		console.log('[share] navigator.share unsupported, falling back to clipboard');
 		void navigator.clipboard.writeText(url);
 		return;
 	}
@@ -254,55 +247,31 @@ export function shareCurrent(): void {
 	void runShareSequence(candidates, url);
 }
 
-function describeFile(file: File | null): string {
-	if (!file) return 'null';
-	return `File(name=${file.name}, type=${file.type}, size=${file.size})`;
-}
-
-function describePayload(p: ShareData): string {
-	const parts: string[] = [];
-	if (p.title) parts.push(`title=${JSON.stringify(p.title)}`);
-	if (p.text) parts.push(`text=${JSON.stringify(p.text)}`);
-	if (p.url) parts.push(`url=${JSON.stringify(p.url)}`);
-	if (p.files?.length) {
-		parts.push(`files=[${p.files.map((f) => describeFile(f as File)).join(', ')}]`);
-	}
-	return `{ ${parts.join(', ')} }`;
-}
-
 async function runShareSequence(candidates: ShareData[], url: string): Promise<void> {
 	const navAny = navigator as unknown as {
 		share?: (d: ShareData) => Promise<void>;
 		canShare?: (d: ShareData) => boolean;
 	};
-	for (let i = 0; i < candidates.length; i++) {
-		const payload = candidates[i];
+	for (const payload of candidates) {
 		// canShare and share must be invoked with `navigator` as their this
 		// context — Safari throws "Can only call Navigator.canShare on
 		// instances of Navigator" if you destructure them off and call them
 		// as plain functions.
 		if (
 			payload.files &&
-			typeof navAny.canShare === 'function'
+			typeof navAny.canShare === 'function' &&
+			!navAny.canShare.call(navigator, payload)
 		) {
-			const ok = navAny.canShare.call(navigator, payload);
-			console.log(`[share] candidate #${i} canShare =`, ok);
-			if (!ok) continue;
+			continue;
 		}
 		try {
-			console.log(`[share] invoking nav.share with candidate #${i}`);
 			await navAny.share!.call(navigator, payload);
-			console.log(`[share] candidate #${i} resolved`);
 			return;
 		} catch (err) {
-			if ((err as DOMException)?.name === 'AbortError') {
-				console.log(`[share] candidate #${i} aborted by user`);
-				return;
-			}
-			console.warn(`[share] candidate #${i} failed`, err);
+			if ((err as DOMException)?.name === 'AbortError') return;
+			console.warn('share attempt failed', Object.keys(payload).join('+'), err);
 		}
 	}
-	console.log('[share] every candidate failed; copying URL to clipboard');
 	await navigator.clipboard.writeText(url);
 }
 

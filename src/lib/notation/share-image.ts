@@ -107,12 +107,8 @@ export async function captureStaffImage(_input: CaptureInput): Promise<StaffImag
 	const ctx = canvas.getContext('2d');
 	if (!ctx) throw new Error('canvas not supported');
 
-	mountDebugSvg(wrappedSvg);
-
 	const v = await Canvg.from(ctx, wrappedSvg);
 	await v.render();
-
-	mountDebugCanvas(canvas);
 
 	const png = await new Promise<Blob>((resolve, reject) => {
 		canvas.toBlob(
@@ -120,56 +116,7 @@ export async function captureStaffImage(_input: CaptureInput): Promise<StaffImag
 			'image/png'
 		);
 	});
-	console.log(
-		`[share] captured staff PNG: ${canvas.width}x${canvas.height}, ${png.size} bytes`
-	);
 	return { png, width: canvas.width, height: canvas.height };
-}
-
-const DEBUG_HOST_ID = 'share-image-debug';
-
-/**
- * Stuff the captured SVG and rasterised canvas into a hidden container at
- * the bottom of the document. By default it's invisible (`display: none`);
- * to inspect it from devtools, run:
- *   document.getElementById('share-image-debug').style.display = 'block'
- * (or set `window.showShareDebug = true` before refresh — applied in
- * onMount of +page.svelte).
- */
-function mountDebugSvg(svgXml: string): void {
-	const host = ensureDebugHost();
-	host.querySelector('[data-role="svg"]')!.innerHTML = svgXml;
-}
-
-function mountDebugCanvas(canvas: HTMLCanvasElement): void {
-	const host = ensureDebugHost();
-	const slot = host.querySelector('[data-role="canvas"]') as HTMLDivElement;
-	slot.innerHTML = '';
-	const clone = canvas.cloneNode(false) as HTMLCanvasElement;
-	clone.width = canvas.width;
-	clone.height = canvas.height;
-	clone.getContext('2d')!.drawImage(canvas, 0, 0);
-	slot.appendChild(clone);
-}
-
-function ensureDebugHost(): HTMLElement {
-	let host = document.getElementById(DEBUG_HOST_ID);
-	if (host) return host;
-	host = document.createElement('div');
-	host.id = DEBUG_HOST_ID;
-	host.style.cssText = 'display: none; padding: 1rem; background: #fff; color: #000; max-width: 100%; overflow: auto; border-top: 1px dashed #888;';
-	host.innerHTML = `
-		<h3 style="margin:0 0 .5rem;font:600 14px system-ui;">Share image debug</h3>
-		<p style="margin:.25rem 0;font:12px system-ui;color:#444;">SVG that gets handed to canvg:</p>
-		<div data-role="svg" style="max-width:100%;border:1px solid #ddd;background:#fff;"></div>
-		<p style="margin:.75rem 0 .25rem;font:12px system-ui;color:#444;">Rasterised canvas (what becomes the share PNG):</p>
-		<div data-role="canvas" style="max-width:100%;border:1px solid #ddd;background:#fff;"></div>
-	`;
-	const styleEl = document.createElement('style');
-	styleEl.textContent = `#${DEBUG_HOST_ID} svg, #${DEBUG_HOST_ID} canvas { max-width: 100%; height: auto; display: block; }`;
-	host.appendChild(styleEl);
-	document.body.appendChild(host);
-	return host;
 }
 
 /**
