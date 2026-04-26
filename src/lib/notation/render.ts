@@ -67,25 +67,6 @@ interface TieAttachment {
 	notes: StaveNote[];
 }
 
-/**
- * Render the same staff into a fresh detached canvas (CANVAS backend) at a
- * supplied target width. Returns the canvas; the caller is responsible for
- * disposing or extracting (e.g. canvas.toBlob) it.
- *
- * Used by share-image to capture the staff for the share PNG without going
- * through an SVG → <img> → canvas pipeline (the off-screen <img> doesn't
- * inherit the page's loaded webfonts and renders glyphs as tofu boxes).
- */
-export function renderRhythmToCanvas(
-	events: RhythmEvent[],
-	bars: number,
-	availableWidth: number
-): { canvas: HTMLCanvasElement; width: number; height: number } {
-	const canvas = document.createElement('canvas');
-	const dimensions = drawIntoTarget(canvas, Renderer.Backends.CANVAS, events, bars, availableWidth);
-	return { canvas, ...dimensions };
-}
-
 export function renderRhythm(
 	host: HTMLDivElement,
 	events: RhythmEvent[],

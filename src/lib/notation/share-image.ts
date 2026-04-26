@@ -1,18 +1,24 @@
 /**
- * Capture the current rhythm as a shareable PNG.
+ * Capture the rendered staff as a shareable PNG.
  *
- * We re-render the same VexFlow staff through its **canvas** backend onto a
- * fresh detached canvas and then call `canvas.toBlob('image/png')`. The
- * canvas backend uses `ctx.fillText(...)` with the document fonts (Bravura
- * + Academico are loaded into `document.fonts` by vexflow on import), so
- * note glyphs render correctly without any SVG-image-font dance — that
- * pipeline never honoured the loaded webfonts and produced tofu boxes.
+ * Pipeline:
+ *  1. Read the live VexFlow SVG out of the DOM (it already uses the
+ *     document's loaded Bravura/Academico fonts).
+ *  2. Wrap it in an outer SVG with a white background and breathing room
+ *     so the image looks good in social previews.
+ *  3. Hand the SVG string to **canvg**. canvg parses the SVG in JS and
+ *     paints into a regular Canvas2D context, which means it uses the
+ *     document fonts via `ctx.fillText` — the same fonts the on-screen
+ *     staff already renders with. No SVG-as-image trickery (which Safari
+ *     refuses to load fonts into) and no VexFlow CANVAS backend (which
+ *     produced primitive output).
+ *  4. `canvas.toBlob('image/png')` for the final blob.
  */
 
-import { renderRhythmToCanvas } from './render';
+import { Canvg } from 'canvg';
 import type { RhythmEvent } from '../rhythm/types';
 
-const TARGET_WIDTH = 1200; // social-friendly preview size
+const TARGET_WIDTH = 1200;
 const HORIZONTAL_PADDING = 60;
 const VERTICAL_PADDING = 80;
 const MIN_OUTPUT_HEIGHT = 600;
@@ -30,46 +36,74 @@ export interface StaffImage {
 	height: number;
 }
 
+/**
+ * The capture takes no inputs — it always reads whatever is on screen.
+ * `events` and `bars` are accepted so callers (refresh effects) can declare
+ * their dependency on the rhythm changing, but they don't influence the
+ * output: the live SVG is the source of truth, complete with beams, ties,
+ * highlights, and any other adornments the renderer added.
+ */
 export interface CaptureInput {
 	events: RhythmEvent[];
 	bars: number;
 }
 
-/**
- * Render the rhythm to an offscreen canvas at preview-friendly dimensions
- * and return a PNG blob.
- */
-export async function captureStaffImage({ events, bars }: CaptureInput): Promise<StaffImage> {
+export async function captureStaffImage(_input: CaptureInput): Promise<StaffImage> {
 	if (typeof document === 'undefined') throw new StaffNotRenderedError();
-	if (events.length === 0) throw new StaffNotRenderedError();
 
-	// Render the staff to a private canvas, then composite it into the
-	// final preview-sized canvas with white background and breathing room.
+	const svgEl = document.querySelector<SVGSVGElement>('.staff-card svg');
+	if (!svgEl) throw new StaffNotRenderedError();
+
+	// Make sure document.fonts (Bravura, Academico) are ready before we
+	// start drawing — canvg uses the document fonts via ctx.fillText.
+	if (document.fonts?.ready) {
+		try {
+			await document.fonts.ready;
+		} catch {
+			/* ignore; will fall back to default font for any missing glyphs */
+		}
+	}
+
+	const naturalWidth = svgEl.viewBox.baseVal?.width || svgEl.clientWidth || 800;
+	const naturalHeight = svgEl.viewBox.baseVal?.height || svgEl.clientHeight || 180;
+
 	const innerWidth = TARGET_WIDTH - HORIZONTAL_PADDING * 2;
-	const inner = renderRhythmToCanvas(events, bars, innerWidth);
-	const scale = Math.min(1, innerWidth / inner.width);
-	const drawnHeight = inner.height * scale;
+	const scale = innerWidth / naturalWidth;
+	const drawnHeight = naturalHeight * scale;
 	const outerHeight = Math.max(MIN_OUTPUT_HEIGHT, drawnHeight + VERTICAL_PADDING * 2);
+	const offsetY = (outerHeight - drawnHeight) / 2;
 
-	const out = document.createElement('canvas');
-	out.width = TARGET_WIDTH;
-	out.height = outerHeight;
-	const ctx = out.getContext('2d');
+	// Build a self-contained SVG document: white background, the live staff
+	// shifted into the padded area, scaled to fit.
+	const innerXml = new XMLSerializer().serializeToString(svgEl);
+	const wrappedSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${TARGET_WIDTH}" height="${outerHeight}" viewBox="0 0 ${TARGET_WIDTH} ${outerHeight}">
+	<rect width="100%" height="100%" fill="#ffffff"/>
+	<g transform="translate(${HORIZONTAL_PADDING} ${offsetY}) scale(${scale})">
+		${stripOuterSvg(innerXml)}
+	</g>
+</svg>`;
+
+	const canvas = document.createElement('canvas');
+	canvas.width = TARGET_WIDTH;
+	canvas.height = outerHeight;
+	const ctx = canvas.getContext('2d');
 	if (!ctx) throw new Error('canvas not supported');
-	ctx.fillStyle = '#ffffff';
-	ctx.fillRect(0, 0, out.width, out.height);
-	ctx.drawImage(
-		inner.canvas,
-		HORIZONTAL_PADDING,
-		(outerHeight - drawnHeight) / 2,
-		inner.width * scale,
-		drawnHeight
-	);
+
+	const v = await Canvg.from(ctx, wrappedSvg);
+	await v.render();
 
 	const png = await new Promise<Blob>((resolve, reject) => {
-		out.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+		canvas.toBlob(
+			(b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
+			'image/png'
+		);
 	});
-	return { png, width: out.width, height: out.height };
+	return { png, width: canvas.width, height: canvas.height };
+}
+
+function stripOuterSvg(svgXml: string): string {
+	return svgXml.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
 }
 
 /**
