@@ -51,7 +51,7 @@ export interface CaptureInput {
 export async function captureStaffImage(_input: CaptureInput): Promise<StaffImage> {
 	if (typeof document === 'undefined') throw new StaffNotRenderedError();
 
-	const svgEl = document.querySelector<SVGSVGElement>('.staff-card svg');
+	const svgEl = await waitForStaff();
 	if (!svgEl) throw new StaffNotRenderedError();
 
 	// Make sure document.fonts (Bravura, Academico) are ready before we
@@ -64,8 +64,35 @@ export async function captureStaffImage(_input: CaptureInput): Promise<StaffImag
 		}
 	}
 
-	const naturalWidth = svgEl.viewBox.baseVal?.width || svgEl.clientWidth || 800;
-	const naturalHeight = svgEl.viewBox.baseVal?.height || svgEl.clientHeight || 180;
+	// VexFlow's outer <svg> carries presentation attrs that every child
+	// inherits (font-family="Bravura,Academico", font-size, fill="black",
+	// stroke="black"). Stripping it and serialising just the children loses
+	// those defaults — paths come out as black blocks, text disappears.
+	// Clone the live SVG, normalise its size, ensure the defaults are
+	// present, then nest the whole thing inside the wrapper SVG.
+	const cloned = svgEl.cloneNode(true) as SVGSVGElement;
+	const naturalWidth =
+		Number(cloned.getAttribute('width')) ||
+		cloned.viewBox.baseVal?.width ||
+		svgEl.clientWidth ||
+		800;
+	const naturalHeight =
+		Number(cloned.getAttribute('height')) ||
+		cloned.viewBox.baseVal?.height ||
+		svgEl.clientHeight ||
+		180;
+	cloned.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+	cloned.setAttribute('width', String(naturalWidth));
+	cloned.setAttribute('height', String(naturalHeight));
+	cloned.setAttribute('viewBox', `0 0 ${naturalWidth} ${naturalHeight}`);
+	// Defaults — set them only if missing so we don't override anything the
+	// renderer already specified.
+	if (!cloned.getAttribute('fill')) cloned.setAttribute('fill', 'black');
+	if (!cloned.getAttribute('stroke')) cloned.setAttribute('stroke', 'black');
+	if (!cloned.getAttribute('font-family')) {
+		cloned.setAttribute('font-family', 'Bravura, Academico, serif');
+	}
+	if (!cloned.getAttribute('font-size')) cloned.setAttribute('font-size', '10pt');
 
 	const innerWidth = TARGET_WIDTH - HORIZONTAL_PADDING * 2;
 	const scale = innerWidth / naturalWidth;
@@ -73,15 +100,11 @@ export async function captureStaffImage(_input: CaptureInput): Promise<StaffImag
 	const outerHeight = Math.max(MIN_OUTPUT_HEIGHT, drawnHeight + VERTICAL_PADDING * 2);
 	const offsetY = (outerHeight - drawnHeight) / 2;
 
-	// Build a self-contained SVG document: white background, the live staff
-	// shifted into the padded area, scaled to fit.
-	const innerXml = new XMLSerializer().serializeToString(svgEl);
+	const innerXml = new XMLSerializer().serializeToString(cloned);
 	const wrappedSvg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${TARGET_WIDTH}" height="${outerHeight}" viewBox="0 0 ${TARGET_WIDTH} ${outerHeight}">
 	<rect width="100%" height="100%" fill="#ffffff"/>
-	<g transform="translate(${HORIZONTAL_PADDING} ${offsetY}) scale(${scale})">
-		${stripOuterSvg(innerXml)}
-	</g>
+	<g transform="translate(${HORIZONTAL_PADDING} ${offsetY}) scale(${scale})">${innerXml}</g>
 </svg>`;
 
 	const canvas = document.createElement('canvas');
@@ -155,10 +178,6 @@ function ensureDebugHost(): HTMLElement {
 	return host;
 }
 
-function stripOuterSvg(svgXml: string): string {
-	return svgXml.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
-}
-
 /**
  * Best-effort: write the current staff into the og:image / twitter:image
  * meta tags so JS-aware previews pick it up. Static-site scrapers that
@@ -176,6 +195,21 @@ export async function updateOgImage(input: CaptureInput): Promise<void> {
 		if (err instanceof StaffNotRenderedError) return;
 		console.warn('updateOgImage failed', err);
 	}
+}
+
+/**
+ * Poll for the live staff SVG for a couple of seconds. The Staff component's
+ * VexFlow render is gated on a ResizeObserver firing, so on first paint the
+ * SVG isn't always in the DOM yet when the rhythm-change effect runs.
+ */
+async function waitForStaff(): Promise<SVGSVGElement | null> {
+	const deadline = performance.now() + 2000;
+	let svg = document.querySelector<SVGSVGElement>('.staff-card svg');
+	while (!svg && performance.now() < deadline) {
+		await new Promise<void>((r) => requestAnimationFrame(() => r()));
+		svg = document.querySelector<SVGSVGElement>('.staff-card svg');
+	}
+	return svg;
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
