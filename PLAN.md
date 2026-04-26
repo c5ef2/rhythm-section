@@ -116,6 +116,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 │       │   ├── share.ts                 base64url codec + isSharedState validator
 │       │   ├── share.test.ts
 │       │   ├── app-state.svelte.ts      AppState class (singleton, $state + $derived)
+│       │   ├── environment.svelte.ts    isStandalone + hasShareApi reactive flags
 │       │   └── actions.svelte.ts        every user intent; owns the Player singleton
 │       └── components/
 │           ├── Staff.svelte             ResizeObserver wrapper around renderRhythm
@@ -165,6 +166,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ### 3.4 Layout (responsive)
 
 - The `Staff` component observes its container with `ResizeObserver` and passes the available width into `renderRhythm`. The rendered SVG is centred horizontally within the staff card (natural width, `margin: 0 auto`).
+- The observer's state write is deferred through one `requestAnimationFrame`. Without that, the synchronous re-render kicked off the next layout pass inside the same frame and the browser logged "ResizeObserver loop completed with undelivered notifications".
 - On wide viewports, bars render side-by-side.
 - **Below ~520 px** and with 2 bars, bars stack on **separate rows**, each with its own time signature.
 - The renderer scales each bar proportionally if the row's natural width exceeds the budget (with a floor so notes stay legible).
@@ -172,7 +174,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ### 3.5 Transport / playback
 
 - **Play / Stop** button. The button is a **hard stop** — it doesn't preserve playback position; Play restarts from the top of the cycle.
-- **Regenerate** (new seed) button.
+- **Regenerate** (new seed) button. Play and Regenerate sit on a single `transport-top` row at every width (CSS grid `2fr 1fr`); BPM stepper + Bars share the row below.
 - **Loop is always on.** No toggle.
 - **Loop restart is anchored to the exact cycle end** (`startTime + bars × secPerBar`), not to the last scheduled event's start time, so tempo never rushes between repetitions.
 - **BPM snapping**: only the classic Maelzel notches 40–208 (40, 42, … 60, 63, 66, 69, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 126, 132, 138, 144, 152, 160, 168, 176, 184, 192, 200, 208). The BPM control is a − / value / + stepper; typed/shared values that land off-notch are snapped on load.
@@ -234,8 +236,14 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
   - Encodes every setting + the rhythm seed.
   - **Live-synced into the address bar.** An effect on the page calls `updateUrlFromState()` whenever any setting changes; the new URL is written via `history.replaceState` (no extra history entries) so users can copy the address bar at any moment and get a working share link without pressing the Share button.
   - Decode is shape-validated by `isSharedState`. Migration shims in `decodeShare` set defaults for missing newer fields (`rhythmAudio` → `false`, `metronome.countedBeats` → `[true, true, true, true]`) and strip dropped fields (`loop`).
-  - The Share button (icon-only, top-right of the header) uses `navigator.share()` when supported. `captureStaffImage` clones the **live VexFlow SVG** out of the DOM (so beams, ties, highlights, and per-beat layout match what the user is looking at), wraps it in an outer SVG with white background + padding, and rasterises through **canvg** into a 1200-px-wide canvas. canvg parses the SVG in JS and paints via `ctx.fillText` against the document fonts (Bravura + Academico are already loaded), so glyphs render correctly without the SVG-as-image font workaround Safari rejects. `canvas.toBlob('image/png')` produces the share file.
-  - The share function tries three payload shapes in order: `{url, files}`, `{files}` only, and `{url}`. iOS Messages sometimes drops attached files when a URL is also present — the file-only fallback covers that path. The `text` field is intentionally omitted so the URL doesn't appear twice (most share targets auto-link any URL field).
+  - The Share button (icon-only, top-right of the header) uses `navigator.share()` when supported.
+  - **Capture pipeline** (`src/lib/notation/share-image.ts`):
+    1. `waitForStaff()` polls the DOM for `.staff-card svg` via `requestAnimationFrame` for up to 2 s. The Staff render is gated on a ResizeObserver, so on first paint the SVG isn't there the moment the rhythm-change effect fires.
+    2. Read the inherited presentation attributes off the live `<svg>` (VexFlow sets `fill="black" stroke="black" font-family="Bravura,Academico" font-size="10pt"` and every child path / text inherits them).
+    3. Build a wrapper SVG: white background `<rect>`, then a `<g transform="translate(pad,offset) scale(s)">` whose attributes are the inherited presentation set, containing the **children** of the live svg (NOT the svg itself — nesting `<svg>` inside `<svg>` blew up the y-axis when the outer `<g>` carried a transform; canvg + nested viewBox + outer transform didn't agree).
+    4. `Canvg.from(ctx, wrappedSvg)` then `v.render()`. canvg parses the SVG in JS and paints via `ctx.fillText` against the document fonts (already loaded by vexflow on import), so glyphs render correctly without any SVG-as-image / @font-face inlining.
+    5. `canvas.toBlob('image/png')` produces the share file.
+  - **Share payload shapes**, in order: `{url, files}`, `{files}` only, `{url}`. iOS Messages sometimes drops attached files when a URL is also present — the file-only fallback covers that path. The `text` field is intentionally omitted: some apps render it as the literal message body, which made a long share URL dominate the conversation.
   - `navigator.share` and `navigator.canShare` are always invoked via `.call(navigator, ...)` — Safari throws "Can only call Navigator.canShare on instances of Navigator" if you destructure them off and call as plain functions.
   - **The PNG is pre-cached on every rhythm change** (an effect in `+page.svelte` calls `captureLatestShareFile()` after each render). `shareCurrent` is **synchronous up to the first `nav.share` call**, reading the cached file directly, so iOS Safari preserves the user-gesture context and the share sheet shows the staff thumbnail.
   - **Visibility rule.** In a regular browser tab the URL bar already shows the live-synced share URL, so the Share button only renders when `navigator.share` is available — otherwise it would be redundant clutter. In an installed PWA (`display-mode: standalone` matched, or the iOS `navigator.standalone` flag set) there's no URL bar, so the Share button is always rendered: it falls back to clipboard copy on browsers without a share API. `environment.hasShareApi` and `environment.isStandalone` (in `src/lib/state/environment.svelte.ts`) drive the gate.
@@ -345,7 +353,9 @@ On every non-trivial change:
    - Toggle every setting during playback and confirm the loop restarts cleanly at the correct tempo.
    - Set BPM via steppers, confirm only Maelzel notches appear.
    - Switch rhythm audio Off / Drum / Bass.
-   - Tap Share, paste URL in a private window: same rhythm appears.
+   - In a browser with `navigator.share` (Chrome Android, Safari iOS): tap Share, confirm the OS share sheet shows the staff thumbnail and the URL link card.
+   - In a browser without `navigator.share` (Firefox, most desktops): the Share button should be **hidden**; copy the URL straight from the address bar and confirm it's already up to date with the current settings (live-synced).
+   - Open the share URL in a private window: same exercise loads.
    - Reload without a hash; previous session's settings load without a visible flash.
    - On a phone-width viewport (DevTools or real phone): page never scrolls horizontally, transport buttons are all tappable, 2-bar view stacks and shows half-ties at the row edges, screen stays awake while playing.
    - Disconnect network, reload: app still loads (service worker cache).
@@ -361,6 +371,8 @@ On every non-trivial change:
 - **navigator.share with files**: not implemented on desktop browsers — share falls back to clipboard copy.
 - **Firewalled devcontainer**: the build-time fetch of `GeneralUserGS.sf3` (in `scripts/build-soundfont.mjs`) goes to `spessasus.github.io`, which is a GitHub Pages domain. The committed devcontainer firewall already allows it; if you tighten the allowlist, add this host.
 - **VexFlow gotcha**: beamed stems live in a shared `<g class="vf-beam">`, NOT inside the note's own group. The renderer fetches them via `note.getStem()?.getSVGElement()` so the highlight covers the right vertical line.
+- **VexFlow inherited-attrs gotcha**: VexFlow's outer `<svg>` carries presentation attrs (`fill="black" stroke="black" font-family="Bravura,Academico"` etc.) and every child inherits them. When you serialise the staff for export (e.g. share PNG), strip the outer `<svg>` and the children render as black blocks with the wrong font. The capture path re-applies those attrs to the wrapping `<g>`.
+- **canvg gotcha**: rendering an `<svg>` nested inside another `<svg>` whose outer `<g>` has a `scale()` transform makes canvg mis-resolve the inner viewBox — the y-axis stretches. Inline the inner svg's children directly into the wrapping `<g>` instead.
 
 ---
 
