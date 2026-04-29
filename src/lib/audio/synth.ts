@@ -3,7 +3,6 @@ import type { ClickSink, RhythmSink } from './scheduler';
 export type RhythmInstrument = 'drum' | 'bass';
 
 export interface Synth extends ClickSink, RhythmSink {
-	setInstrument(instrument: RhythmInstrument): void;
 	destroy(): void;
 }
 
@@ -12,20 +11,23 @@ export interface Synth extends ClickSink, RhythmSink {
  * replaced at runtime by a SoundFont-backed synth once loaded.
  */
 export function oscillatorSynth(ctx: AudioContext): Synth {
-	let instrument: RhythmInstrument = 'drum';
-
 	return {
-		setInstrument(next) {
-			instrument = next;
-		},
 		playClick(time, emphasis) {
 			const freq = emphasis === 'downbeat' ? 1600 : emphasis === 'onbeat' ? 1000 : 700;
 			const peak = emphasis === 'downbeat' ? 0.5 : 0.35;
 			blip(ctx, time, freq, peak, 'square', 0.05);
 		},
-		playRhythm(time, durationSec) {
-			if (instrument === 'drum') kick(ctx, time);
-			else bass(ctx, time, durationSec);
+		playKick(time) {
+			kick(ctx, time);
+		},
+		playSnare(time) {
+			snare(ctx, time);
+		},
+		playHihat(time) {
+			hihat(ctx, time);
+		},
+		playBass(time, durationSec) {
+			bass(ctx, time, durationSec);
 		},
 		destroy() {}
 	};
@@ -84,6 +86,60 @@ function kick(ctx: AudioContext, time: number): void {
 	click.connect(clickFilter).connect(clickGain).connect(ctx.destination);
 	click.start(time);
 	click.stop(time + 0.05);
+}
+
+function snare(ctx: AudioContext, time: number): void {
+	// White-noise burst through a band-pass + a 200 Hz tonal blip layered on top.
+	const noiseLen = Math.floor(ctx.sampleRate * 0.18);
+	const buf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+	const data = buf.getChannelData(0);
+	for (let i = 0; i < noiseLen; i++) data[i] = Math.random() * 2 - 1;
+	const noise = ctx.createBufferSource();
+	noise.buffer = buf;
+	const filter = ctx.createBiquadFilter();
+	filter.type = 'bandpass';
+	filter.frequency.value = 2200;
+	filter.Q.value = 0.6;
+	const gain = ctx.createGain();
+	gain.gain.setValueAtTime(0.0001, time);
+	gain.gain.exponentialRampToValueAtTime(0.6, time + 0.002);
+	gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+	noise.connect(filter).connect(gain).connect(ctx.destination);
+	noise.start(time);
+	noise.stop(time + 0.2);
+
+	const tone = ctx.createOscillator();
+	const toneGain = ctx.createGain();
+	tone.type = 'triangle';
+	tone.frequency.setValueAtTime(220, time);
+	tone.frequency.exponentialRampToValueAtTime(140, time + 0.08);
+	toneGain.gain.setValueAtTime(0.0001, time);
+	toneGain.gain.exponentialRampToValueAtTime(0.35, time + 0.003);
+	toneGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+	tone.connect(toneGain).connect(ctx.destination);
+	tone.start(time);
+	tone.stop(time + 0.12);
+}
+
+function hihat(ctx: AudioContext, time: number): void {
+	// Short high-pass-filtered noise burst.
+	const len = Math.floor(ctx.sampleRate * 0.05);
+	const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+	const data = buf.getChannelData(0);
+	for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+	const src = ctx.createBufferSource();
+	src.buffer = buf;
+	const filter = ctx.createBiquadFilter();
+	filter.type = 'highpass';
+	filter.frequency.value = 7000;
+	filter.Q.value = 0.7;
+	const gain = ctx.createGain();
+	gain.gain.setValueAtTime(0.0001, time);
+	gain.gain.exponentialRampToValueAtTime(0.3, time + 0.001);
+	gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
+	src.connect(filter).connect(gain).connect(ctx.destination);
+	src.start(time);
+	src.stop(time + 0.05);
 }
 
 function bass(ctx: AudioContext, time: number, durationSec: number): void {

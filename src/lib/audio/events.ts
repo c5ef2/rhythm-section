@@ -13,11 +13,26 @@ const UNITS: Readonly<Record<NoteLength, number>> = {
 };
 
 export type ClickEmphasis = 'downbeat' | 'onbeat' | 'subbeat';
+export type RhythmInstrument = 'drum' | 'bass';
+export type DrumVoice = 'kick' | 'snare' | 'hihat';
 
 export type AudioEvent =
 	| { type: 'metronome'; time: number; emphasis: ClickEmphasis }
 	| {
-			type: 'rhythm';
+			type: 'kick';
+			time: number;
+			rhythmEventIndex: number;
+	  }
+	| {
+			type: 'snare';
+			time: number;
+	  }
+	| {
+			type: 'hihat';
+			time: number;
+	  }
+	| {
+			type: 'bass';
 			time: number;
 			durationSec: number;
 			rhythmEventIndex: number;
@@ -31,11 +46,23 @@ export interface BuildEventListInput {
 	startTime: number;
 	metronome: MetronomeOptions;
 	rhythmAudio?: boolean;
+	rhythmInstrument?: RhythmInstrument;
+	allowedLengths?: NoteLength[];
 	countInBars?: number;
 }
 
 export function buildEventList(input: BuildEventListInput): AudioEvent[] {
-	const { events, bars, bpm, startTime, metronome, rhythmAudio = false, countInBars = 0 } = input;
+	const {
+		events,
+		bars,
+		bpm,
+		startTime,
+		metronome,
+		rhythmAudio = false,
+		rhythmInstrument = 'drum',
+		allowedLengths = [],
+		countInBars = 0
+	} = input;
 	const secPerBeat = 60 / bpm;
 	const secPerBar = secPerBeat * BEATS_PER_BAR;
 	const contentStart = startTime + countInBars * secPerBar;
@@ -48,9 +75,45 @@ export function buildEventList(input: BuildEventListInput): AudioEvent[] {
 	if (metronome.enabled) {
 		pushMetronomeClicks(out, metronome, bars, secPerBeat, contentStart);
 	}
-	pushRhythmAndHighlights(out, events, secPerBeat, contentStart, rhythmAudio);
+	pushRhythmAndHighlights(out, events, secPerBeat, contentStart, rhythmAudio, rhythmInstrument);
+	if (rhythmAudio && rhythmInstrument === 'drum') {
+		pushDrumGroove(out, bars, secPerBeat, contentStart, allowedLengths);
+	}
 
 	return out.sort((a, b) => a.time - b.time);
+}
+
+/**
+ * Add the steady drum-kit overlay that plays alongside the rhythm-driven
+ * kick: snare on beats 2 and 4, hihat on the most-fine subdivision the
+ * user has enabled (triplet > 16th > 8th).
+ */
+function pushDrumGroove(
+	out: AudioEvent[],
+	bars: number,
+	secPerBeat: number,
+	startTime: number,
+	allowedLengths: NoteLength[]
+): void {
+	for (let bar = 0; bar < bars; bar++) {
+		// Snare on beats 2 and 4 (zero-indexed 1 and 3).
+		for (const beat of [1, 3]) {
+			out.push({ type: 'snare', time: startTime + (bar * BEATS_PER_BAR + beat) * secPerBeat });
+		}
+	}
+	const hihatPerBeat = hihatSubdivision(allowedLengths);
+	const totalHits = hihatPerBeat * BEATS_PER_BAR * bars;
+	for (let i = 0; i < totalHits; i++) {
+		out.push({ type: 'hihat', time: startTime + (i / hihatPerBeat) * secPerBeat });
+	}
+}
+
+function hihatSubdivision(allowedLengths: NoteLength[]): number {
+	// Triplet feel beats binary 16ths because mixing them sounds bad. Then
+	// the most-fine binary subdivision the user has on. Default 8ths.
+	if (allowedLengths.includes('eighth-triplet')) return 3;
+	if (allowedLengths.includes('sixteenth')) return 4;
+	return 2;
 }
 
 function pushCountInClicks(
@@ -110,7 +173,8 @@ function pushRhythmAndHighlights(
 	events: RhythmEvent[],
 	secPerBeat: number,
 	startTime: number,
-	rhythmAudio: boolean
+	rhythmAudio: boolean,
+	rhythmInstrument: RhythmInstrument
 ): void {
 	let positionUnits = 0;
 	for (let i = 0; i < events.length; i++) {
@@ -120,12 +184,16 @@ function pushRhythmAndHighlights(
 
 		const prevTiedToThis = i > 0 && events[i - 1].tiedToNext;
 		if (rhythmAudio && !e.isRest && !prevTiedToThis) {
-			out.push({
-				type: 'rhythm',
-				time,
-				durationSec: totalSustainSec(events, i, secPerBeat),
-				rhythmEventIndex: i
-			});
+			if (rhythmInstrument === 'bass') {
+				out.push({
+					type: 'bass',
+					time,
+					durationSec: totalSustainSec(events, i, secPerBeat),
+					rhythmEventIndex: i
+				});
+			} else {
+				out.push({ type: 'kick', time, rhythmEventIndex: i });
+			}
 		}
 		positionUnits += UNITS[e.length];
 	}

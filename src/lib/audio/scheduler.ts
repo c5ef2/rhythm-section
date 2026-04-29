@@ -10,7 +10,10 @@ export interface ClickSink {
 }
 
 export interface RhythmSink {
-	playRhythm(time: number, durationSec: number): void;
+	playKick(time: number): void;
+	playSnare(time: number): void;
+	playHihat(time: number): void;
+	playBass(time: number, durationSec: number): void;
 }
 
 export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> {
@@ -86,6 +89,8 @@ export class Scheduler {
 			startTime,
 			metronome: this.cfg.metronome,
 			rhythmAudio: this.cfg.rhythmAudio,
+			rhythmInstrument: this.cfg.rhythmInstrument,
+			allowedLengths: this.cfg.allowedLengths,
 			countInBars
 		});
 		this.highlights = this.events
@@ -132,8 +137,17 @@ export class Scheduler {
 			case 'metronome':
 				this.cfg.click.playClick(e.time, e.emphasis);
 				break;
-			case 'rhythm':
-				this.cfg.rhythm?.playRhythm(e.time, e.durationSec);
+			case 'kick':
+				this.cfg.rhythm?.playKick(e.time);
+				break;
+			case 'snare':
+				this.cfg.rhythm?.playSnare(e.time);
+				break;
+			case 'hihat':
+				this.cfg.rhythm?.playHihat(e.time);
+				break;
+			case 'bass':
+				this.cfg.rhythm?.playBass(e.time, e.durationSec);
 				break;
 			case 'highlight':
 				// Handled by the rAF loop reading ctx.currentTime directly.

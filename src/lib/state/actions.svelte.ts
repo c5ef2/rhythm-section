@@ -39,6 +39,7 @@ function currentInputs() {
 		metronome: s.metronome,
 		rhythmAudio: s.rhythmAudio,
 		rhythmInstrument: s.rhythmInstrument,
+		allowedLengths: s.allowedLengths,
 		countInBars: s.countIn ? 1 : 0,
 		loop: true
 	};

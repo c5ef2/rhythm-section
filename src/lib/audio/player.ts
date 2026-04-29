@@ -1,4 +1,4 @@
-import type { MetronomeOptions, RhythmEvent } from '../rhythm/types';
+import type { MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
 import { configureIosPlayback } from './ios-audio';
 import { Scheduler } from './scheduler';
 import { createSoundFontSynth, fetchBundledSoundFont } from './soundfont-synth';
@@ -12,6 +12,7 @@ export interface PlayInputs {
 	metronome: MetronomeOptions;
 	rhythmAudio: boolean;
 	rhythmInstrument: RhythmInstrument;
+	allowedLengths: NoteLength[];
 	countInBars: number;
 	loop: boolean;
 }
@@ -110,7 +111,6 @@ export class Player {
 
 	async run(inputs: PlayInputs): Promise<void> {
 		const { ctx, synth } = await this.ensureAudio();
-		synth.setInstrument(inputs.rhythmInstrument);
 		this.scheduler?.stop();
 		this.scheduler = new Scheduler({
 			ctx,
@@ -121,6 +121,8 @@ export class Player {
 			bpm: inputs.bpm,
 			metronome: inputs.metronome,
 			rhythmAudio: inputs.rhythmAudio,
+			rhythmInstrument: inputs.rhythmInstrument,
+			allowedLengths: inputs.allowedLengths,
 			countInBars: inputs.countInBars,
 			loop: inputs.loop,
 			onHighlight: (i) => this.callbacks.onActiveNote(i),

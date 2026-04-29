@@ -76,22 +76,21 @@ describe('buildEventList', () => {
 		expect(clicks.length).toBe(8); // 2 per beat × 4 beats
 	});
 
-	it('emits a rhythm hit at each non-rest event when rhythmAudio is on', () => {
+	it('emits a kick at each non-rest event when rhythmAudio is on (drum mode)', () => {
 		const list = buildEventList({
 			events: [quarter(), eighth({ isRest: true }), eighth(), quarter(), quarter()],
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true
+			rhythmAudio: true,
+			rhythmInstrument: 'drum'
 		});
-		const hits = list.filter((e) => e.type === 'rhythm');
+		const hits = list.filter((e) => e.type === 'kick');
 		expect(hits.length).toBe(4); // the 8th rest is skipped
 	});
 
-	it('drum hits only once per tied group, regardless of length', () => {
-		// Tied sequence of 3 events (e.g. from a cross-beat split of a dotted-half):
-		// eighth --tie-- quarter --tie-- eighth
+	it('emits exactly one kick per tied group regardless of length', () => {
 		const list = buildEventList({
 			events: [
 				{ kind: 'binary', length: 'eighth', durationSlots: 2, isRest: false, tiedToNext: true },
@@ -103,28 +102,111 @@ describe('buildEventList', () => {
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true
+			rhythmAudio: true,
+			rhythmInstrument: 'drum'
 		});
-		const hits = list.filter((e): e is Extract<AudioEvent, { type: 'rhythm' }> => e.type === 'rhythm');
-		expect(hits.length).toBe(2);
-		// First hit sustains for 8th + quarter + 8th = one full beat + two 8ths = 2 beats = 2s @60bpm
-		expect(hits[0].durationSec).toBeCloseTo(2);
+		const kicks = list.filter((e) => e.type === 'kick');
+		expect(kicks.length).toBe(2);
 	});
 
-	it('skips rhythm hits for tied continuations', () => {
+	it('emits exactly one bass hit per tied group with the summed duration', () => {
 		const list = buildEventList({
 			events: [eighth({ tiedToNext: true }), eighth(), quarter()],
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true
+			rhythmAudio: true,
+			rhythmInstrument: 'bass'
 		});
-		const hits = list.filter((e): e is Extract<AudioEvent, { type: 'rhythm' }> => e.type === 'rhythm');
+		const hits = list.filter((e): e is Extract<AudioEvent, { type: 'bass' }> => e.type === 'bass');
 		expect(hits.length).toBe(2);
-		// First hit lasts across the tie: 0.5s (8th @60bpm) + 0.5s (8th) = 1s
+		// First hit lasts across the tie: 0.5s + 0.5s = 1s; second is a quarter @60bpm = 1s.
 		expect(hits[0].durationSec).toBeCloseTo(1);
 		expect(hits[1].durationSec).toBeCloseTo(1);
+	});
+
+	it('overlays snare on beats 2 + 4 in drum mode', () => {
+		const list = buildEventList({
+			events: [quarter(), quarter(), quarter(), quarter()],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			rhythmAudio: true,
+			rhythmInstrument: 'drum'
+		});
+		const snares = list.filter((e) => e.type === 'snare');
+		expect(snares.map((e) => e.time)).toEqual([1, 3]);
+	});
+
+	it('hihat subdivision uses 8ths by default', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			rhythmAudio: true,
+			rhythmInstrument: 'drum',
+			allowedLengths: ['quarter', 'eighth']
+		});
+		const hihats = list.filter((e) => e.type === 'hihat');
+		expect(hihats.length).toBe(8);
+	});
+
+	it('hihat upgrades to 16ths when sixteenth is in allowedLengths', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			rhythmAudio: true,
+			rhythmInstrument: 'drum',
+			allowedLengths: ['quarter', 'eighth', 'sixteenth']
+		});
+		const hihats = list.filter((e) => e.type === 'hihat');
+		expect(hihats.length).toBe(16);
+	});
+
+	it('hihat goes triplet when eighth-triplet is allowed (beats 16ths)', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			rhythmAudio: true,
+			rhythmInstrument: 'drum',
+			allowedLengths: ['quarter', 'sixteenth', 'eighth-triplet']
+		});
+		const hihats = list.filter((e) => e.type === 'hihat');
+		expect(hihats.length).toBe(12); // 3 per beat × 4 beats
+	});
+
+	it('drum overlay only fires when rhythmAudio is on AND instrument is drum', () => {
+		const off = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			rhythmAudio: false,
+			rhythmInstrument: 'drum'
+		});
+		expect(off.filter((e) => e.type === 'snare' || e.type === 'hihat').length).toBe(0);
+
+		const bassMode = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			rhythmAudio: true,
+			rhythmInstrument: 'bass'
+		});
+		expect(bassMode.filter((e) => e.type === 'snare' || e.type === 'hihat').length).toBe(0);
 	});
 
 	it('always emits a highlight event for every rhythm event (rest, tied, or not)', () => {
@@ -150,14 +232,15 @@ describe('buildEventList', () => {
 			startTime: 0,
 			metronome: metronome(),
 			rhythmAudio: true,
+			rhythmInstrument: 'drum',
 			countInBars: 1
 		});
 		const clicks = list.filter((e) => e.type === 'metronome');
 		const firstHighlight = list.find((e) => e.type === 'highlight');
-		const firstHit = list.find((e) => e.type === 'rhythm');
+		const firstKick = list.find((e) => e.type === 'kick');
 		expect(clicks.length).toBe(8); // 2 bars × 4 quarter clicks
 		expect(firstHighlight?.time).toBeCloseTo(4); // after one bar of count-in @60bpm
-		expect(firstHit?.time).toBeCloseTo(4);
+		expect(firstKick?.time).toBeCloseTo(4);
 	});
 
 	it('shifts all times by startTime', () => {
