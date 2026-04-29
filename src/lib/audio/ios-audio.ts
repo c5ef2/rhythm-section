@@ -4,18 +4,18 @@
  * By default, Safari treats Web Audio output as "ambient" audio, which the
  * iPhone silences whenever the side ringer switch is in the muted position —
  * even at full volume, even while other apps (Apple Music, Spotify) play
- * normally. To escape that, we:
+ * normally. To escape that we run two complementary fixes:
  *
- *  1. Set `audioContext.audioSession.type = 'playback'` where supported
- *     (Safari 18+). This is the standards-based answer: we declare ourselves
- *     a media-playback app and the OS mixes us with the media volume, not
- *     with the notification/ringer stream.
+ *  1. `configureIosPlayback(ctx)` (call any time after the ctx is created):
+ *     sets `ctx.audioSession.type = 'playback'` on Safari 18+ to opt the
+ *     context into the media-playback session category.
  *
- *  2. As a fallback for Safari 17 and earlier where the Audio Session API
- *     doesn't exist, play a looping silent `<audio>` element alongside the
- *     AudioContext during the user's first play gesture. Any HTML media
- *     element that is actively playing flips the page into the "media
- *     playback" mode, which also bypasses the ringer switch.
+ *  2. `primeIosPlayback()` (must be called inside a user gesture, e.g. the
+ *     Play button click): adds a hidden looping silent `<audio>` element
+ *     and starts it. Any actively-playing HTMLMediaElement flips the page
+ *     into media-playback mode on older Safari where the Audio Session
+ *     API doesn't exist. Calling `play()` outside a user gesture is
+ *     silently rejected, which is why the primer can't run from preload.
  */
 
 const SILENT_WAV_DATA_URL = buildSilentWavDataUrl();
@@ -33,32 +33,30 @@ export function configureIosPlayback(ctx: AudioContext): void {
 			// ignore — readonly on some older implementations
 		}
 	}
-	primeSilentAudio();
 }
 
-function primeSilentAudio(): void {
+/**
+ * Must be called from inside a user-gesture stack (click handler etc.).
+ * Idempotent — repeated calls just keep the silent-audio loop running.
+ */
+export function primeIosPlayback(): void {
 	if (typeof document === 'undefined') return;
-	if (silentEl) {
-		// Already primed; make sure the loop is still running.
-		silentEl.play().catch(() => {});
-		return;
+	if (!silentEl) {
+		const a = document.createElement('audio');
+		a.setAttribute('playsinline', '');
+		a.setAttribute('webkit-playsinline', '');
+		a.loop = true;
+		a.preload = 'auto';
+		a.muted = false;
+		a.volume = 0;
+		a.src = SILENT_WAV_DATA_URL;
+		a.style.display = 'none';
+		document.body.appendChild(a);
+		silentEl = a;
 	}
-	const a = document.createElement('audio');
-	a.setAttribute('playsinline', '');
-	a.setAttribute('webkit-playsinline', '');
-	a.loop = true;
-	a.preload = 'auto';
-	a.muted = false;
-	a.volume = 0;
-	a.src = SILENT_WAV_DATA_URL;
-	a.style.display = 'none';
-	document.body.appendChild(a);
-	// Play is gated on the user gesture that triggered the audio context,
-	// so this is safe inside the same stack.
-	a.play().catch(() => {
-		/* Safari may refuse on first try; the Audio Session API covers us. */
-	});
-	silentEl = a;
+	// play() returns a promise on iOS Safari; rejection means the gesture
+	// didn't propagate (we'll try again on the next click).
+	silentEl.play().catch(() => {});
 }
 
 /** 100 ms of silence as a WAV data-URL. Small enough to inline (~600 chars). */

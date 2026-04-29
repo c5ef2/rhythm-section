@@ -1,5 +1,5 @@
 import type { MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
-import { configureIosPlayback } from './ios-audio';
+import { configureIosPlayback, primeIosPlayback } from './ios-audio';
 import { Scheduler } from './scheduler';
 import { createSoundFontSynth, fetchBundledSoundFont } from './soundfont-synth';
 import { oscillatorSynth, type RhythmInstrument, type Synth } from './synth';
@@ -110,6 +110,10 @@ export class Player {
 	}
 
 	async run(inputs: PlayInputs): Promise<void> {
+		// Must run synchronously inside the click stack — primeIosPlayback's
+		// silent-audio play() is rejected outside a user gesture, so the
+		// async ensureAudio() can't follow it.
+		primeIosPlayback();
 		const { ctx, synth } = await this.ensureAudio();
 		this.scheduler?.stop();
 		this.scheduler = new Scheduler({

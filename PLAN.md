@@ -194,7 +194,12 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ### 3.7 Rhythm audio
 
 - Default **off**; user toggles on per session (persisted via the share codec / settings).
-- **Instrument**: drum (kick) *or* bass (fretless bass at A1). UI is a single segmented control: Off / Drum / Bass.
+- **Instrument**: drum kit *or* bass (fretless bass at A1). UI is a single segmented control: Off / Drum / Bass.
+- **Drum mode is a full groove**, not just a kick:
+  - Kick on every non-rest, non-tied-continuation rhythm event.
+  - Snare on beats 2 and 4 of every bar.
+  - Hihat at the most-fine subdivision the user has enabled — triplet (3/beat) if `eighth-triplet` is in `allowedLengths`, else 16th (4/beat) if `sixteenth` is allowed, else 8th (2/beat).
+- **Bass mode** plays one fretless-bass note per non-rest, non-tied-continuation event; sustain = sum of the tied group.
 - The bundled SoundFont (`static/rhythm.sf3`, ≈770 KB) is **preloaded eagerly** the moment the page mounts:
   - `Player.preload()` creates the AudioContext (suspended), runs `configureIosPlayback`, registers `spessasynth_processor.min.js` as an audio worklet, fetches `static/rhythm.sf3`, and primes the `WorkletSynthesizer` so the first Play press is instant.
   - `appState.soundFontStatus` cycles `idle → loading → ready` (or `error`).
@@ -213,9 +218,9 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ### 3.8 iOS ringer-switch workaround (`src/lib/audio/ios-audio.ts`)
 
 - iPhone's side mute switch silences any Web Audio in the default "ambient" category, even at full media volume.
-- `configureIosPlayback(ctx)` is called once when the AudioContext is created:
-  - **Safari 18+**: sets `audioContext.audioSession.type = 'playback'`. The standards-based fix.
-  - **Older Safari**: primes a hidden looping `<audio>` element with a 100 ms silent WAV (data URL, generated inline). Any actively-playing HTMLMediaElement flips the page into media-playback mode. The element lives in `document.body`, is `volume=0`, `muted=false`, `playsinline`. The `play()` is invoked inside the user gesture that starts the AudioContext so autoplay policy accepts it.
+- Two complementary fixes, called from different points:
+  - `configureIosPlayback(ctx)` runs from `Player.preload()` (mount-time) and sets `ctx.audioSession.type = 'playback'` on Safari 18+. This part doesn't need a user gesture.
+  - `primeIosPlayback()` runs from `Player.run()` (Play button click), inside the user-gesture stack. It mounts a hidden looping `<audio>` element backed by a 100 ms silent WAV data URL and calls `play()`. Any actively-playing HTMLMediaElement flips the page into media-playback mode on older Safari where the Audio Session API doesn't exist. **Must** run synchronously before any `await`, otherwise iOS rejects the `play()` because the gesture has already returned.
 
 ### 3.9 Scheduler (`src/lib/audio/scheduler.ts`)
 
@@ -236,18 +241,8 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
   - Encodes every setting + the rhythm seed.
   - **Live-synced into the address bar.** An effect on the page calls `updateUrlFromState()` whenever any setting changes; the new URL is written via `history.replaceState` (no extra history entries) so users can copy the address bar at any moment and get a working share link without pressing the Share button.
   - Decode is shape-validated by `isSharedState`. Migration shims in `decodeShare` set defaults for missing newer fields (`rhythmAudio` → `false`, `metronome.countedBeats` → `[true, true, true, true]`) and strip dropped fields (`loop`).
-  - The Share button (icon-only, top-right of the header) uses `navigator.share()` when supported.
-  - **Capture pipeline** (`src/lib/notation/share-image.ts`):
-    1. `waitForStaff()` polls the DOM for `.staff-card svg` via `requestAnimationFrame` for up to 2 s. The Staff render is gated on a ResizeObserver, so on first paint the SVG isn't there the moment the rhythm-change effect fires.
-    2. Read the inherited presentation attributes off the live `<svg>` (VexFlow sets `fill="black" stroke="black" font-family="Bravura,Academico" font-size="10pt"` and every child path / text inherits them).
-    3. Build a wrapper SVG: white background `<rect>`, then a `<g transform="translate(pad,offset) scale(s)">` whose attributes are the inherited presentation set, containing the **children** of the live svg (NOT the svg itself — nesting `<svg>` inside `<svg>` blew up the y-axis when the outer `<g>` carried a transform; canvg + nested viewBox + outer transform didn't agree).
-    4. `Canvg.from(ctx, wrappedSvg)` then `v.render()`. canvg parses the SVG in JS and paints via `ctx.fillText` against the document fonts (already loaded by vexflow on import), so glyphs render correctly without any SVG-as-image / @font-face inlining.
-    5. `canvas.toBlob('image/png')` produces the share file.
-  - **Share payload shapes**, in order: `{url, files}`, `{files}` only, `{url}`. iOS Messages sometimes drops attached files when a URL is also present — the file-only fallback covers that path. The `text` field is intentionally omitted: some apps render it as the literal message body, which made a long share URL dominate the conversation.
-  - `navigator.share` and `navigator.canShare` are always invoked via `.call(navigator, ...)` — Safari throws "Can only call Navigator.canShare on instances of Navigator" if you destructure them off and call as plain functions.
-  - **The PNG is pre-cached on every rhythm change** (an effect in `+page.svelte` calls `captureLatestShareFile()` after each render). `shareCurrent` is **synchronous up to the first `nav.share` call**, reading the cached file directly, so iOS Safari preserves the user-gesture context and the share sheet shows the staff thumbnail.
+  - The Share button (icon-only, top-right of the header) uses `navigator.share({ title, url })` when supported and falls back to copying the URL to the clipboard. No image attachment — link previews are the destination app's responsibility, fed by static `og:` meta tags. The handler calls `navigator.share.call(navigator, …)` because Safari's WebIDL guard rejects the bare invocation.
   - **Visibility rule.** In a regular browser tab the URL bar already shows the live-synced share URL, so the Share button only renders when `navigator.share` is available — otherwise it would be redundant clutter. In an installed PWA (`display-mode: standalone` matched, or the iOS `navigator.standalone` flag set) there's no URL bar, so the Share button is always rendered: it falls back to clipboard copy on browsers without a share API. `environment.hasShareApi` and `environment.isStandalone` (in `src/lib/state/environment.svelte.ts`) drive the gate.
-  - `og:image` / `twitter:image` / `twitter:card` meta are dynamically updated to a data URL of the staff PNG whenever the rhythm changes (best-effort: JS-less scrapers only see the initial HTML, so this matters mainly for JS-aware previews; the canonical preview source for shared messages is the file attached to `navigator.share`).
 
 ### 3.11 Theme & visual system
 
@@ -371,8 +366,7 @@ On every non-trivial change:
 - **navigator.share with files**: not implemented on desktop browsers — share falls back to clipboard copy.
 - **Firewalled devcontainer**: the build-time fetch of `GeneralUserGS.sf3` (in `scripts/build-soundfont.mjs`) goes to `spessasus.github.io`, which is a GitHub Pages domain. The committed devcontainer firewall already allows it; if you tighten the allowlist, add this host.
 - **VexFlow gotcha**: beamed stems live in a shared `<g class="vf-beam">`, NOT inside the note's own group. The renderer fetches them via `note.getStem()?.getSVGElement()` so the highlight covers the right vertical line.
-- **VexFlow inherited-attrs gotcha**: VexFlow's outer `<svg>` carries presentation attrs (`fill="black" stroke="black" font-family="Bravura,Academico"` etc.) and every child inherits them. When you serialise the staff for export (e.g. share PNG), strip the outer `<svg>` and the children render as black blocks with the wrong font. The capture path re-applies those attrs to the wrapping `<g>`.
-- **canvg gotcha**: rendering an `<svg>` nested inside another `<svg>` whose outer `<g>` has a `scale()` transform makes canvg mis-resolve the inner viewBox — the y-axis stretches. Inline the inner svg's children directly into the wrapping `<g>` instead.
+- **iOS audio gotcha**: `audio.play()` on the silent-audio primer is rejected outside a user gesture. Setting up the silent audio at AudioContext-creation time (in `Player.preload()`, which runs on mount) regresses the ringer-mute fix — the primer must run from the Play click, before the first `await`.
 
 ---
 
