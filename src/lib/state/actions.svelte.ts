@@ -1,11 +1,6 @@
 import { browser } from '$app/environment';
 import { bpmStepDown, bpmStepUp, snapBpm } from '../audio/bpm';
 import { Player } from '../audio/player';
-import {
-	captureStaffImage,
-	StaffNotRenderedError,
-	updateOgImage
-} from '../notation/share-image';
 import { randomSeed } from '../rng/seeded';
 import type { MetronomeDivision, NoteLength } from '../rhythm/types';
 import { appState } from './app-state.svelte';
@@ -179,107 +174,27 @@ export function updateUrlFromState(): void {
 }
 
 /**
- * Latest captured share file, refreshed in the background on every rhythm
- * change so the click handler can call navigator.share synchronously without
- * waiting on canvas rasterisation. iOS Safari is strict about user-gesture
- * propagation across awaits — calling `await captureStaffImage()` first and
- * then `nav.share` afterwards makes iOS treat the share as out-of-gesture
- * and may silently drop the attached file from the share sheet preview.
- */
-let cachedShareFile: File | null = null;
-
-export async function captureLatestShareFile(): Promise<void> {
-	if (!browser) return;
-	try {
-		const image = await captureStaffImage(captureInput());
-		cachedShareFile = new File([image.png], 'rhythm-section.png', { type: 'image/png' });
-	} catch (err) {
-		// 'staff not rendered yet' is normal during first paint; the next
-		// rhythm-change effect will retry once the events are in place.
-		if (err instanceof StaffNotRenderedError) return;
-		console.warn('captureStaffImage failed', err);
-	}
-}
-
-/**
- * Share the current exercise. Uses navigator.share when available so mobile
- * users get the native share sheet with the rhythm's PNG attached; otherwise
- * falls back to copying the link to the clipboard.
- *
- * Tries several payload shapes in order so the most-preferred combination
- * (URL + image file) is attempted first, falling back to file-only and then
- * URL-only when the platform / target app rejects the richer one. iOS
- * Messages, for example, sometimes silently drops attached files when a URL
- * is also present; on those targets file-only is the only way the staff
- * preview actually rides along.
- *
- * Synchronous up to the first nav.share call so iOS preserves the click's
- * user gesture; subsequent fallbacks may run after the gesture has expired
- * but only matter when the platform rejects the first shape.
+ * Open the native share sheet with the current exercise URL when possible;
+ * otherwise copy the URL to the clipboard. No image attachment — link
+ * previews are the destination app's responsibility.
  */
 export function shareCurrent(): void {
 	if (!browser) return;
 	const url = currentShareUrl();
 
-	const file = cachedShareFile;
-	// `text` shows up as the literal message body in apps like iMessage —
-	// putting a long share URL there made it dominate the message. Use
-	// `url` instead: target apps render it as a link card. If the platform
-	// rejects {url, files} together (some do drop the file), the file-only
-	// candidate is still tried before falling back to a URL-only share.
-	const candidates: ShareData[] = file
-		? [
-				{ title: 'Rhythm Section', url, files: [file] },
-				{ title: 'Rhythm Section', files: [file] },
-				{ title: 'Rhythm Section', url }
-			]
-		: [{ title: 'Rhythm Section', url }];
-
 	const navAny = navigator as unknown as {
 		share?: (d: ShareData) => Promise<void>;
-		canShare?: (d: ShareData) => boolean;
 	};
 	if (typeof navAny.share !== 'function') {
 		void navigator.clipboard.writeText(url);
 		return;
 	}
 
-	void runShareSequence(candidates, url);
-}
-
-async function runShareSequence(candidates: ShareData[], url: string): Promise<void> {
-	const navAny = navigator as unknown as {
-		share?: (d: ShareData) => Promise<void>;
-		canShare?: (d: ShareData) => boolean;
-	};
-	for (const payload of candidates) {
-		// canShare and share must be invoked with `navigator` as their this
-		// context — Safari throws "Can only call Navigator.canShare on
-		// instances of Navigator" if you destructure them off and call them
-		// as plain functions.
-		if (
-			payload.files &&
-			typeof navAny.canShare === 'function' &&
-			!navAny.canShare.call(navigator, payload)
-		) {
-			continue;
-		}
-		try {
-			await navAny.share!.call(navigator, payload);
-			return;
-		} catch (err) {
-			if ((err as DOMException)?.name === 'AbortError') return;
-			console.warn('share attempt failed', Object.keys(payload).join('+'), err);
-		}
-	}
-	await navigator.clipboard.writeText(url);
-}
-
-export async function refreshShareImage(): Promise<void> {
-	if (!browser) return;
-	await updateOgImage(captureInput());
-}
-
-function captureInput() {
-	return { events: appState.rhythm.events, bars: appState.settings.bars };
+	// Call share inside the user gesture; .call(navigator, …) keeps the
+	// receiver Safari demands.
+	void navAny.share.call(navigator, { title: 'Rhythm Section', url }).catch((err) => {
+		if ((err as DOMException)?.name === 'AbortError') return;
+		console.warn('share failed, copying URL instead', err);
+		void navigator.clipboard.writeText(url);
+	});
 }

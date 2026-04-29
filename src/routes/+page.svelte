@@ -92,22 +92,6 @@
 		});
 	});
 
-	// Keep the og:image meta and the cached share file in sync with the
-	// visible staff. The cached file lets shareCurrent call navigator.share
-	// synchronously inside the click gesture (iOS Safari otherwise drops
-	// the attached file when a sufficient async gap precedes nav.share).
-	$effect(() => {
-		void appState.rhythm.events;
-		void appState.settings.bars;
-		untrack(() => {
-			// Wait a frame for VexFlow to finish drawing before capturing.
-			requestAnimationFrame(() => {
-				void actions.refreshShareImage();
-				void actions.captureLatestShareFile();
-			});
-		});
-	});
-
 	function onKeydown(e: KeyboardEvent) {
 		if (e.code !== 'Space') return;
 		const target = e.target as HTMLElement | null;
