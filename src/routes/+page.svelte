@@ -45,7 +45,11 @@
 		actions.preloadAudio();
 	});
 
-	const playLoading = $derived(appState.soundFontStatus === 'loading');
+	const playLoading = $derived(
+		appState.soundFontStatus === 'loading' || appState.soundFontStatus === 'idle'
+	);
+	const playError = $derived(appState.soundFontStatus === 'error');
+	const playDisabled = $derived(playLoading || playError);
 	// In a regular browser tab the user can always copy the URL from the
 	// address bar (we live-sync it), so the Share button only earns its
 	// keep when there's a native share dialog to open. In a PWA install
@@ -153,10 +157,13 @@
 				class="primary play"
 				type="button"
 				onclick={actions.togglePlay}
-				disabled={playLoading}
+				disabled={playDisabled}
 				aria-busy={playLoading}
+				title={playError ? 'Audio unavailable — connect to the network and reload' : undefined}
 			>
-				{#if playLoading}
+				{#if playError}
+					<span>Audio unavailable</span>
+				{:else if playLoading}
 					<span class="spinner" aria-hidden="true"></span>
 					<span>Loading…</span>
 				{:else if appState.isPlaying}

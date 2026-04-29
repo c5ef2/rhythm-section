@@ -1,6 +1,6 @@
 import { base } from '$app/paths';
 import { WorkletSynthesizer } from 'spessasynth_lib';
-import type { Synth } from './synth';
+import type { Synth } from './scheduler';
 
 // GM drum kit lives on channel 9 (zero-based); melodic channel 0 is used for
 // bass. Note numbers follow the General MIDI standard drum map.

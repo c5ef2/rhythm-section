@@ -1,8 +1,8 @@
 import type { MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
 import { configureIosPlayback, primeIosPlayback } from './ios-audio';
-import { Scheduler } from './scheduler';
+import { Scheduler, type Synth } from './scheduler';
 import { createSoundFontSynth, fetchBundledSoundFont } from './soundfont-synth';
-import { oscillatorSynth, type RhythmInstrument, type Synth } from './synth';
+import type { RhythmInstrument } from './events';
 import { WakeLock } from './wake-lock';
 
 export interface PlayInputs {
@@ -30,6 +30,10 @@ export interface PlayerCallbacks {
  * respect to user settings: every `run(inputs)` starts fresh, so callers can
  * keep their settings in one place and trigger a restart whenever anything
  * that affects playback has changed.
+ *
+ * Audio output is exclusively SoundFont-backed — there's no oscillator
+ * fallback. The UI gates Play behind `soundFontStatus === 'ready'`, so
+ * `run()` is only ever called when the synth is real.
  */
 export class Player {
 	private ctx: AudioContext | null = null;
@@ -62,31 +66,20 @@ export class Player {
 		);
 	}
 
-	private ensureContext(): { ctx: AudioContext; synth: Synth } {
+	private ensureContext(): AudioContext {
 		if (!this.ctx) {
 			this.ctx = new AudioContext();
 			configureIosPlayback(this.ctx);
 		}
-		if (!this.synth) this.synth = oscillatorSynth(this.ctx);
-		return { ctx: this.ctx, synth: this.synth };
-	}
-
-	private async ensureAudio(): Promise<{ ctx: AudioContext; synth: Synth }> {
-		const { ctx, synth } = this.ensureContext();
-		if (ctx.state === 'suspended') await ctx.resume();
-		// If preload didn't run (or failed because the context wasn't allowed
-		// yet), kick the load off here. Once it resolves, `this.synth` is the
-		// SoundFont-backed synth.
-		void this.kickOffSoundFontLoad();
-		return { ctx, synth: this.synth ?? synth };
+		return this.ctx;
 	}
 
 	/**
 	 * Fetch the bundled SoundFont and initialise SpessaSynth on top of the
 	 * existing AudioContext. Idempotent — repeated calls return the same
-	 * promise. On fetch/init failure (e.g. offline before the service worker
-	 * has cached it) we leave the oscillator fallback in place and let a
-	 * later call try again.
+	 * promise. On fetch/init failure (e.g. brand-new device, offline first
+	 * visit, no SW cache yet) we surface 'error' so the UI can keep Play
+	 * disabled and tell the user to come back online.
 	 */
 	private kickOffSoundFontLoad(): Promise<Synth> {
 		if (this.soundFontPromise) return this.soundFontPromise;
@@ -96,13 +89,12 @@ export class Player {
 		this.soundFontPromise = (async () => {
 			const buffer = await fetchBundledSoundFont();
 			const synth = await createSoundFontSynth({ ctx, soundFontBuffer: buffer });
-			this.synth?.destroy();
 			this.synth = synth;
 			this.callbacks.onSoundFontStatus?.('ready');
 			return synth;
 		})().catch((err) => {
-			console.warn('Bundled SoundFont unavailable, staying on oscillator fallback', err);
-			this.soundFontPromise = null; // allow retry on next ensureAudio
+			console.warn('Bundled SoundFont failed to load', err);
+			this.soundFontPromise = null; // allow a retry next time
 			this.callbacks.onSoundFontStatus?.('error');
 			throw err;
 		});
@@ -112,9 +104,14 @@ export class Player {
 	async run(inputs: PlayInputs): Promise<void> {
 		// Must run synchronously inside the click stack — primeIosPlayback's
 		// silent-audio play() is rejected outside a user gesture, so the
-		// async ensureAudio() can't follow it.
+		// async work below can't precede it.
 		primeIosPlayback();
-		const { ctx, synth } = await this.ensureAudio();
+		const ctx = this.ensureContext();
+		if (ctx.state === 'suspended') await ctx.resume();
+		// If preload didn't fire (or refused without a gesture), kick the
+		// load off now. Returns the loaded synth or surfaces 'error'.
+		const synth = this.synth ?? (await this.kickOffSoundFontLoad());
+
 		this.scheduler?.stop();
 		this.scheduler = new Scheduler({
 			ctx,

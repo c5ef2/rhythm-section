@@ -101,10 +101,10 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 │       ├── audio/
 │       │   ├── events.ts                pure buildEventList
 │       │   ├── events.test.ts
-│       │   ├── scheduler.ts             Chris Wilson look-ahead + rAF highlight + seamless loop
-│       │   ├── synth.ts                 oscillator fallback Synth (kick + bass + click)
+│       │   ├── scheduler.ts             Chris Wilson look-ahead + rAF highlight + seamless loop;
+│       │   │                            also exports the Synth interface
 │       │   ├── soundfont-synth.ts       SpessaSynth-backed Synth + fetchBundledSoundFont
-│       │   ├── ios-audio.ts             configureIosPlayback (audioSession + silent <audio>)
+│       │   ├── ios-audio.ts             configureIosPlayback (audioSession) + primeIosPlayback (silent <audio>)
 │       │   ├── wake-lock.ts             Screen Wake Lock API wrapper
 │       │   ├── player.ts                Player owns ctx, synth, scheduler, wake lock, soundfont preload
 │       │   ├── bpm.ts                   Maelzel notch table + snap/step
@@ -202,17 +202,13 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 - **Bass mode** plays one fretless-bass note per non-rest, non-tied-continuation event; sustain = sum of the tied group.
 - The bundled SoundFont (`static/rhythm.sf3`, ≈770 KB) is **preloaded eagerly** the moment the page mounts:
   - `Player.preload()` creates the AudioContext (suspended), runs `configureIosPlayback`, registers `spessasynth_processor.min.js` as an audio worklet, fetches `static/rhythm.sf3`, and primes the `WorkletSynthesizer` so the first Play press is instant.
-  - `appState.soundFontStatus` cycles `idle → loading → ready` (or `error`).
-  - The Play button is disabled with a spinner while `loading`.
-  - In browsers that refuse to create an AudioContext outside a user gesture (rare), `preload` no-ops and Play falls back to a lazy load on first press.
+  - `appState.soundFontStatus` cycles `idle → loading → ready` (or `error` on a failed fetch).
+  - The Play button is disabled with a spinner while `idle` or `loading`. On `error` the button label becomes "Audio unavailable" with a tooltip telling the user to come back online and reload — there is no oscillator fallback. The service worker precaches `rhythm.sf3` on install, so this state is only reachable on a brand-new device with no network on first load.
+  - In browsers that refuse to create an AudioContext outside a user gesture (rare), `preload` no-ops and the lazy load happens inside the first Play click.
 - The SoundFont was built by `npm run soundfont` from SpessaSynth's GeneralUserGS:
   - keep only Standard 1 drum kit (kick on note 36, claves 75, woodblock 76 — used for click and rhythm)
   - keep only Fretless Bass (bank 0 program 35) for melodic bass at A1 (MIDI 33)
   - SF3 Ogg samples are preserved end-to-end (`compress: false, decompress: false`), output ≈770 KB
-- While the SoundFont is loading (or if the fetch fails — e.g. offline first-run before the SW caches it) the **oscillator fallback** keeps the app audible:
-  - Kick = sine sweep 180 → 60 Hz with a bandpassed noise transient around 1.5 kHz (audible on phone speakers).
-  - Bass = sawtooth at 55 Hz (A1) layered with 110 Hz second harmonic, low-passed.
-  - Click = square oscillator blip with different pitches per emphasis.
 - Rhythm hits are scheduled **only on the first note of each tied group** (skip when prev tiedToNext). For bass, audible duration is the sum of the tied group.
 
 ### 3.8 iOS ringer-switch workaround (`src/lib/audio/ios-audio.ts`)

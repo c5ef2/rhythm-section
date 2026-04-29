@@ -16,6 +16,14 @@ export interface RhythmSink {
 	playBass(time: number, durationSec: number): void;
 }
 
+/**
+ * The combined audio sink the Player hands to the Scheduler. Currently the
+ * only implementation is the SoundFont-backed synth in soundfont-synth.ts.
+ */
+export interface Synth extends ClickSink, RhythmSink {
+	destroy(): void;
+}
+
 export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> {
 	ctx: AudioContext;
 	click: ClickSink;
