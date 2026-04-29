@@ -1,4 +1,5 @@
-import type { MetronomeOptions, NoteLength } from '../rhythm/types';
+import { MAELZEL_BPMS, snapBpm } from '../audio/bpm';
+import type { MetronomeDivision, MetronomeOptions, NoteLength } from '../rhythm/types';
 
 export type RhythmInstrument = 'drum' | 'bass';
 
@@ -15,19 +16,226 @@ export interface SharedState {
 	seed: number;
 }
 
+/*
+ * Compact binary share format. Goal: a hash short enough to type out by
+ * hand, instead of the ~360-byte base64-of-JSON we used to ship.
+ *
+ * Layout (little-endian, bit-packed):
+ *
+ *   byte 0          version tag (0x01)
+ *   bits 8-13   (6) bpm-index into MAELZEL_BPMS
+ *   bit  14     (1) bars (0 = 1 bar, 1 = 2 bars)
+ *   bits 15-21  (7) allowedLengths bitmask (see LENGTH_BITS below)
+ *   bits 22-25  (4) countedBeats bitmask  (bit 0 = beat 1, bit 3 = beat 4)
+ *   bits 26-28  (3) metronome.division index (DIVISIONS array)
+ *   bit  29     (1) metronome.enabled
+ *   bit  30     (1) metronome.emphasizeFirstBeat
+ *   bit  31     (1) rhythmInstrument (0 = drum, 1 = bass)
+ *   bit  32     (1) rhythmAudio
+ *   bit  33     (1) allowRests
+ *   bit  34     (1) allowTies
+ *   bit  35     (1) countIn
+ *   bits 40-71 (32) seed (uint32 LE)
+ *
+ *   total = 9 bytes  →  base64url ≈ 12 characters.
+ *
+ * The legacy base64-of-JSON payload still decodes (used by existing share
+ * links circulating in the wild). The encoder always emits the compact form.
+ */
+
+const PACK_VERSION = 0x01;
+
+const LENGTH_BITS: NoteLength[] = [
+	'whole',
+	'half',
+	'quarter',
+	'eighth',
+	'sixteenth',
+	'eighth-triplet',
+	'dotted-eighth'
+];
+
+const DIVISIONS: MetronomeDivision[] = ['half', 'quarter', 'eighth', 'triplet', 'sixteenth'];
+
 export function encodeShare(state: SharedState): string {
-	return toBase64Url(JSON.stringify(state));
+	return toBase64Url(packBinary(state));
 }
 
 export function decodeShare(encoded: string): SharedState | null {
+	const bytes = fromBase64UrlToBytes(encoded);
+	if (!bytes) return null;
+	if (bytes.length > 0 && bytes[0] === PACK_VERSION) {
+		const unpacked = unpackBinary(bytes);
+		return unpacked && isSharedState(unpacked) ? unpacked : null;
+	}
+	// Legacy base64-of-JSON payload — kept so old links keep working.
+	return decodeLegacyJson(bytes);
+}
+
+// --- compact binary encoding -------------------------------------------------
+
+function packBinary(state: SharedState): Uint8Array {
+	const out = new Uint8Array(9);
+	out[0] = PACK_VERSION;
+
+	const w = new BitWriter();
+	w.write(bpmIndex(state.bpm), 6);
+	w.write(state.bars === 2 ? 1 : 0, 1);
+	w.write(allowedLengthsToMask(state.allowedLengths), 7);
+	w.write(countedBeatsToMask(state.metronome.countedBeats), 4);
+	w.write(divisionIndex(state.metronome.division), 3);
+	w.write(state.metronome.enabled ? 1 : 0, 1);
+	w.write(state.metronome.emphasizeFirstBeat ? 1 : 0, 1);
+	w.write(state.rhythmInstrument === 'bass' ? 1 : 0, 1);
+	w.write(state.rhythmAudio ? 1 : 0, 1);
+	w.write(state.allowRests ? 1 : 0, 1);
+	w.write(state.allowTies ? 1 : 0, 1);
+	w.write(state.countIn ? 1 : 0, 1);
+	const flagBytes = w.bytes(); // 4 bytes (28 bits → ceil to 4)
+	out.set(flagBytes, 1);
+
+	const seed = state.seed >>> 0;
+	out[5] = seed & 0xff;
+	out[6] = (seed >>> 8) & 0xff;
+	out[7] = (seed >>> 16) & 0xff;
+	out[8] = (seed >>> 24) & 0xff;
+	return out;
+}
+
+function unpackBinary(bytes: Uint8Array): SharedState | null {
+	if (bytes.length < 9) return null;
+	const r = new BitReader(bytes.subarray(1, 5));
+	const bpmIdx = r.read(6);
+	const bars = r.read(1) === 1 ? 2 : 1;
+	const lengthsMask = r.read(7);
+	const countedMask = r.read(4);
+	const divisionIdx = r.read(3);
+	const metronomeEnabled = r.read(1) === 1;
+	const emphasizeFirstBeat = r.read(1) === 1;
+	const rhythmInstrument: RhythmInstrument = r.read(1) === 1 ? 'bass' : 'drum';
+	const rhythmAudio = r.read(1) === 1;
+	const allowRests = r.read(1) === 1;
+	const allowTies = r.read(1) === 1;
+	const countIn = r.read(1) === 1;
+
+	const seed =
+		bytes[5] | (bytes[6] << 8) | (bytes[7] << 16) | ((bytes[8] << 24) >>> 0);
+
+	if (bpmIdx >= MAELZEL_BPMS.length) return null;
+	if (divisionIdx >= DIVISIONS.length) return null;
+
+	return {
+		bpm: MAELZEL_BPMS[bpmIdx],
+		bars: bars as 1 | 2,
+		allowedLengths: maskToAllowedLengths(lengthsMask),
+		allowRests,
+		allowTies,
+		metronome: {
+			enabled: metronomeEnabled,
+			division: DIVISIONS[divisionIdx],
+			emphasizeFirstBeat,
+			countedBeats: maskToCountedBeats(countedMask)
+		},
+		rhythmInstrument,
+		countIn,
+		rhythmAudio,
+		seed: seed >>> 0
+	};
+}
+
+function bpmIndex(bpm: number): number {
+	const snapped = snapBpm(bpm);
+	const idx = MAELZEL_BPMS.indexOf(snapped);
+	return idx >= 0 ? idx : 0;
+}
+
+function divisionIndex(division: MetronomeDivision): number {
+	const idx = DIVISIONS.indexOf(division);
+	return idx >= 0 ? idx : 1; // default to 'quarter'
+}
+
+function allowedLengthsToMask(lengths: NoteLength[]): number {
+	let mask = 0;
+	for (const l of lengths) {
+		const i = LENGTH_BITS.indexOf(l);
+		if (i >= 0) mask |= 1 << i;
+	}
+	return mask;
+}
+
+function maskToAllowedLengths(mask: number): NoteLength[] {
+	const out: NoteLength[] = [];
+	for (let i = 0; i < LENGTH_BITS.length; i++) {
+		if (mask & (1 << i)) out.push(LENGTH_BITS[i]);
+	}
+	return out;
+}
+
+function countedBeatsToMask(beats: readonly boolean[]): number {
+	let mask = 0;
+	for (let i = 0; i < 4; i++) if (beats[i]) mask |= 1 << i;
+	return mask;
+}
+
+function maskToCountedBeats(mask: number): [boolean, boolean, boolean, boolean] {
+	return [
+		(mask & 1) !== 0,
+		(mask & 2) !== 0,
+		(mask & 4) !== 0,
+		(mask & 8) !== 0
+	];
+}
+
+class BitWriter {
+	private buf: number[] = [];
+	private cur = 0;
+	private bits = 0;
+	write(value: number, width: number): void {
+		this.cur |= (value & ((1 << width) - 1)) << this.bits;
+		this.bits += width;
+		while (this.bits >= 8) {
+			this.buf.push(this.cur & 0xff);
+			this.cur >>>= 8;
+			this.bits -= 8;
+		}
+	}
+	bytes(): Uint8Array {
+		const out = [...this.buf];
+		if (this.bits > 0) out.push(this.cur & 0xff);
+		while (out.length < 4) out.push(0);
+		return new Uint8Array(out);
+	}
+}
+
+class BitReader {
+	private buf: Uint8Array;
+	private cur = 0;
+	private bits = 0;
+	private idx = 0;
+	constructor(buf: Uint8Array) {
+		this.buf = buf;
+	}
+	read(width: number): number {
+		while (this.bits < width && this.idx < this.buf.length) {
+			this.cur |= this.buf[this.idx++] << this.bits;
+			this.bits += 8;
+		}
+		const value = this.cur & ((1 << width) - 1);
+		this.cur >>>= width;
+		this.bits -= width;
+		return value;
+	}
+}
+
+// --- legacy base64-of-JSON support ------------------------------------------
+
+function decodeLegacyJson(bytes: Uint8Array): SharedState | null {
 	try {
-		const json = fromBase64Url(encoded);
+		const json = new TextDecoder().decode(bytes);
 		const parsed = JSON.parse(json);
 		if (parsed && typeof parsed === 'object') {
 			const p = parsed as Record<string, unknown>;
 			if (typeof p.rhythmAudio !== 'boolean') p.rhythmAudio = false;
-			// `loop` was a toggle in earlier versions; strip it so validation
-			// succeeds on both old and new payloads.
 			delete p.loop;
 			const metronome = p.metronome as Record<string, unknown> | undefined;
 			if (metronome && !Array.isArray(metronome.countedBeats)) {
@@ -40,21 +248,29 @@ export function decodeShare(encoded: string): SharedState | null {
 	}
 }
 
-function toBase64Url(s: string): string {
-	const bytes = new TextEncoder().encode(s);
+// --- base64url helpers -------------------------------------------------------
+
+function toBase64Url(bytes: Uint8Array): string {
 	let bin = '';
 	for (const b of bytes) bin += String.fromCharCode(b);
 	return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function fromBase64Url(s: string): string {
-	if (!/^[A-Za-z0-9_-]*$/.test(s)) throw new Error('not base64url');
-	const padded = s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4);
-	const bin = atob(padded);
-	const bytes = new Uint8Array(bin.length);
-	for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-	return new TextDecoder().decode(bytes);
+function fromBase64UrlToBytes(s: string): Uint8Array | null {
+	if (!/^[A-Za-z0-9_-]*$/.test(s)) return null;
+	try {
+		const padded =
+			s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4);
+		const bin = atob(padded);
+		const bytes = new Uint8Array(bin.length);
+		for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+		return bytes;
+	} catch {
+		return null;
+	}
 }
+
+// --- shape validator ---------------------------------------------------------
 
 function isSharedState(v: unknown): v is SharedState {
 	if (!v || typeof v !== 'object') return false;
