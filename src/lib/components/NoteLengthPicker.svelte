@@ -44,8 +44,11 @@
 
 <style>
 	.icon-btn {
-		width: 2.75rem;
-		height: 2.75rem;
+		/* 2.75rem made the 7-button row (5 notes + rest + tie) overflow on
+		   a 360 px viewport. 2.6rem keeps everything on one row without
+		   dropping below the 44 px / ~2.5rem tap-target floor. */
+		width: 2.6rem;
+		height: 2.6rem;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;

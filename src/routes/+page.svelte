@@ -602,6 +602,11 @@
 		align-items: center;
 		gap: 0.4rem;
 	}
+	/* Match the picker's note buttons so rest + tie sit at the same size. */
+	.picker-row .icon-btn {
+		width: 2.6rem;
+		height: 2.6rem;
+	}
 
 	.beat-picker {
 		display: inline-flex;
