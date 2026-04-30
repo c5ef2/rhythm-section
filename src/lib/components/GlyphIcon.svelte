@@ -21,15 +21,23 @@
 	aria-hidden="true"
 >
 	{#if glyph === 'rest'}
-		<!-- Stylised quarter rest. -->
-		<path d="M14 6 q3 3 0 6 q-3 3 1 6" stroke-width="2" />
-		<path d="M14 18 q4 1 5 4 q1 3 -2 4" stroke-width="2" />
-		<circle cx="14" cy="22" r="1.5" fill="currentColor" stroke="none" />
+		<!-- Eighth rest: diagonal flag-stem with one filled blob. -->
+		<circle cx="11" cy="14" r="2.4" fill="currentColor" stroke="none" />
+		<path
+			d="M11.6 14 L19 6"
+			stroke-width="2.2"
+			fill="none"
+		/>
+		<path
+			d="M11.6 14 Q14 18 14 24 Q14 27 11 28"
+			stroke-width="2"
+			fill="none"
+		/>
 	{:else if glyph === 'tie'}
-		<!-- Two noteheads connected by a tie arc. -->
-		<ellipse cx="9" cy="22" rx="3.2" ry="2.2" transform="rotate(-18 9 22)" fill="currentColor" />
-		<ellipse cx="23" cy="22" rx="3.2" ry="2.2" transform="rotate(-18 23 22)" fill="currentColor" />
-		<path d="M8 18 q8 -8 16 0" stroke-width="1.6" />
+		<!-- Two noteheads with a tie arc curving below (matches engraving). -->
+		<ellipse cx="9" cy="14" rx="3.4" ry="2.4" transform="rotate(-18 9 14)" fill="currentColor" />
+		<ellipse cx="23" cy="14" rx="3.4" ry="2.4" transform="rotate(-18 23 14)" fill="currentColor" />
+		<path d="M8 18 q8 8 16 0" stroke-width="1.8" fill="none" />
 	{:else if glyph === 'snare'}
 		<!-- Drum side cylinder + snare wires across the bottom. -->
 		<rect x="6" y="11" width="20" height="11" rx="1.5" />
