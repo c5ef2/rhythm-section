@@ -90,6 +90,8 @@
 		void s.countIn;
 		void s.rhythmAudio;
 		void s.rhythmInstrument;
+		void s.snareOnBackbeats;
+		void s.hihatSubdivision;
 		void appState.rhythm.events;
 		untrack(() => {
 			actions.restartIfPlaying();
