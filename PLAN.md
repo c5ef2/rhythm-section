@@ -121,7 +121,13 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 │       └── components/
 │           ├── Staff.svelte             ResizeObserver wrapper around renderRhythm
 │           ├── NoteIcon.svelte          centred SVG glyph for each NoteLength
-│           └── NoteLengthPicker.svelte  toggle group of NoteIcons
+│           ├── GlyphIcon.svelte         rest / tie / snare / hihat glyphs
+│           ├── NoteLengthPicker.svelte  toggle buttons for note lengths
+│           │                            (renders as a fragment so its buttons
+│           │                            wrap inline with sibling rest + tie
+│           │                            buttons in the parent flex)
+│           └── SegmentedControl.svelte  generic labelled-pill row used for
+│                                        Rhythm audio / Snare / Hihat
 ```
 
 ---
@@ -174,14 +180,14 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ### 3.5 Transport / playback
 
 - **Play / Stop** button. The button is a **hard stop** — it doesn't preserve playback position; Play restarts from the top of the cycle.
-- **Regenerate** (new seed) button. Play and Regenerate sit on a single `transport-top` row at every width (CSS grid `2fr 1fr`); BPM stepper + Bars share the row below.
+- **Regenerate** (new seed) button. Play and Regenerate sit on a single `transport-top` row at every width (CSS grid `1fr 1fr`); BPM stepper + Bars share the row below in the same 1:1 grid (so Bars sits flush under Regenerate).
 - **Loop is always on.** No toggle.
 - **Loop restart is anchored to the exact cycle end** (`startTime + bars × secPerBar`), not to the last scheduled event's start time, so tempo never rushes between repetitions.
 - **BPM snapping**: only the classic Maelzel notches 40–208 (40, 42, … 60, 63, 66, 69, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 126, 132, 138, 144, 152, 160, 168, 176, 184, 192, 200, 208). The BPM control is a − / value / + stepper; typed/shared values that land off-notch are snapped on load.
 - **Settings apply immediately during playback.** An effect on the page watches every playback-affecting field and calls `restartIfPlaying()`.
 - **Keyboard**: Space toggles play/stop when focus is not in an input/button/textarea.
 - **Wake Lock**: while playing, the screen stays awake via the Screen Wake Lock API. Re-acquired when the tab becomes visible again. Unsupported browsers no-op.
-- **Play button shows a spinner** and is `disabled` + `aria-busy` while the bundled SoundFont is loading (see §3.7).
+- **Play button shows a spinner** and is `disabled` + `aria-busy` only while the bundled SoundFont is `loading`. The `idle` status (preload skipped on PWA standalone) is treated as "ready to start, click me" so the button stays clickable; the click triggers a lazy load and the spinner appears for the brief load window. `error` keeps the button disabled with an "Audio unavailable" label.
 
 ### 3.6 Metronome
 
@@ -193,13 +199,14 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 
 ### 3.7 Rhythm audio
 
-- Default **off**; user toggles on per session (persisted via the share codec / settings).
+- Default **on (drum)** for a fresh user (see §3.14 for the full default state); user can switch off / drum / bass per session, persisted via the share codec / settings.
 - **Instrument**: drum kit *or* bass (fretless bass at A1). UI is a single segmented control: Off / Drum / Bass.
 - **Drum mode** plays kick on every non-rest, non-tied-continuation rhythm event.
 - **Bass mode** plays one fretless-bass note per non-rest, non-tied-continuation event; sustain = sum of the tied group.
-- **Snare and hihat** are independent overlays controlled by `snareOnBackbeats` (boolean) and `hihatSubdivision` (`'off' | 'eighth' | 'sixteenth' | 'triplet'`). They fire regardless of `rhythmAudio` mode (drum/bass/off), so the user can layer a snare backbeat or hihat shuffle over a bass-only practice or even pure metronome practice.
+- **Snare and hihat** are independent overlays controlled by `snareOnBackbeats` (boolean) and `hihatSubdivision` (`'off' | 'eighth' | 'sixteenth' | 'triplet'`). They fire regardless of `rhythmAudio` mode (drum/bass/off), so the user can layer a snare backbeat or hihat shuffle over a bass-only practice or even pure metronome practice. Both are wired into the `restartIfPlaying` effect, so toggling them mid-loop applies immediately without needing to press Play / Stop.
   - Snare = beats 2 and 4 of every bar.
   - Hihat = 2 / 3 / 4 hits per beat depending on subdivision. `'off'` skips it entirely.
+  - Both rendered through a generic `SegmentedControl` component (`src/lib/components/SegmentedControl.svelte`): Snare = Off / On, Hihat = Off / 8 / 16 / triplet (note-glyph icons). Same component drives the Off / Drum / Bass row.
 - The bundled SoundFont (`static/rhythm.sf3`, ≈770 KB) is **preloaded eagerly** the moment the page mounts:
   - `Player.preload()` creates the AudioContext (suspended), runs `configureIosPlayback`, registers `spessasynth_processor.min.js` as an audio worklet, fetches `static/rhythm.sf3`, and primes the `WorkletSynthesizer` so the first Play press is instant.
   - `appState.soundFontStatus` cycles `idle → loading → ready` (or `error` on a failed fetch).
@@ -257,13 +264,40 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 - `app.html` links the manifest and the apple-touch-icon with **relative URLs** so they resolve under GitHub Pages' `/<repo>/` subpath.
 - **Offline mode**: `src/service-worker.ts` precaches everything in `$service-worker`'s `build` + `files` lists (compiled JS / CSS, the bundled SoundFont, the manifest, the icons). Navigation goes network-first with the cached shell as offline fallback; other GETs are cache-first then network. The SW calls `skipWaiting()` + `clients.claim()` so a new deploy takes over immediately.
 - **Auto-refresh on new deploy**: `reloadOnNewServiceWorker()` in `src/lib/service-worker-client.ts` listens for `controllerchange`. The moment the browser swaps in a newer SW, the page reloads once. First-load safety: only attaches when a controller was already present at page load, so a brand-new install doesn't reload itself.
+- **Brand-blue header strip.** A fixed `body::before` paints `env(safe-area-inset-top)` with the brand-blue gradient (same one as the Play button). In a regular browser tab `safe-area-inset-top` is `0` so the pseudo-element collapses to zero height; in iOS PWA standalone it covers the status-bar region so the white iOS status text reads on a branded background instead of plain white.
+- **Lazy AudioContext init in standalone.** `preloadAudio()` is skipped when `environment.isStandalone` is true. iOS suspends the AudioContext / its AudioWorklet across home-screen launches and `noteOn` calls go nowhere. The first Play click creates the context fresh; the user briefly sees the spinner once and then it's ready for the rest of the session.
+- **Manifest `theme_color` = `#6f8cff`** (brand). Matches the body strip and the iOS PWA splash.
 
-### 3.13 Mobile UX
+### 3.13 Default settings (clean browser, no hash, no localStorage)
+
+`defaultSettings()` in `src/lib/state/settings.ts` returns:
+
+| Field | Default |
+|---|---|
+| `bpm` | `72` |
+| `bars` | `1` |
+| `allowedLengths` | `['quarter', 'eighth', 'sixteenth']` |
+| `allowRests` | `true` |
+| `allowTies` | `false` |
+| `metronome.enabled` | `false` |
+| `metronome.division` | `'quarter'` |
+| `metronome.emphasizeFirstBeat` | `true` |
+| `metronome.countedBeats` | `[true, true, true, true]` |
+| `rhythmInstrument` | `'drum'` |
+| `rhythmAudio` | `true` |
+| `snareOnBackbeats` | `true` |
+| `hihatSubdivision` | `'eighth'` |
+| `countIn` | `false` |
+| `seed` | fresh `randomSeed()` per call |
+
+`DEFAULT_SETTINGS` (deterministic, `seed: 1`) is still exported as a constant, used by tests and the localStorage migration merge fallback.
+
+### 3.14 Mobile UX
 
 - Viewport meta: `viewport-fit=cover` and safe-area insets respected in CSS (`env(safe-area-inset-*)` on `main` padding).
 - PWA-capable meta tags (`theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-title`).
 - **44 px** minimum tap-target on every interactive control. `touch-action: manipulation` and no tap-highlight flash.
-- **Transport stacks vertically** at narrow widths: Play + Regenerate share a row (2:1), then BPM stepper + Bars share a row.
+- **Transport stacks vertically** at every width: Play + Regenerate share a row (1:1), then BPM stepper + Bars share a row (1:1) so Bars sits flush under Regenerate.
 - Selected buttons inside `.group` keep the bright gradient background (scoped `aria-pressed` override, because Svelte's style scoping otherwise wins over the global pressed rule).
 - Note-length picker, division picker and count-beat buttons are icon-only (SVG via `NoteIcon`).
 
