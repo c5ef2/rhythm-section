@@ -545,6 +545,12 @@
 	}
 	.bars-group {
 		flex: 0 0 auto;
+		gap: 0.35rem;
+		padding-left: 0.6rem;
+		padding-right: 0.4rem;
+	}
+	.bars-group .group-label {
+		margin-right: 0.25rem;
 	}
 	.bars-group button {
 		min-width: 2.4rem;
