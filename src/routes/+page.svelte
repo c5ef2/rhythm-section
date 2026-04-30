@@ -44,9 +44,10 @@
 		actions.preloadAudio();
 	});
 
-	const playLoading = $derived(
-		appState.soundFontStatus === 'loading' || appState.soundFontStatus === 'idle'
-	);
+	// `idle` means "preload was skipped (PWA mode) and the user hasn't clicked
+	// Play yet" — the click handler will lazy-load the SoundFont. So idle is
+	// NOT a loading state from the user's POV; only `loading` is.
+	const playLoading = $derived(appState.soundFontStatus === 'loading');
 	const playError = $derived(appState.soundFontStatus === 'error');
 	const playDisabled = $derived(playLoading || playError);
 	// In a regular browser tab the user can always copy the URL from the
