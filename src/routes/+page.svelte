@@ -254,7 +254,7 @@
 
 	<section class="card settings">
 		<div class="settings-row">
-			<span class="group-label">Allowed note lengths</span>
+			<span class="group-label">Allowed in rhythm</span>
 			<div class="picker-row">
 				<NoteLengthPicker
 					value={appState.settings.allowedLengths}
@@ -284,7 +284,7 @@
 			</div>
 		</div>
 		<SegmentedControl
-			label="Rhythm audio"
+			label="Rhythm"
 			value={rhythmMode}
 			options={[
 				{ value: 'off', label: 'Off' },
