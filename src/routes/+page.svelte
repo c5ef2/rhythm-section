@@ -442,16 +442,13 @@
 		display: grid;
 		gap: var(--space-3);
 	}
-	.transport-top {
-		display: grid;
-		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-		gap: var(--space-2);
-	}
+	.transport-top,
 	.transport-bottom {
-		/* Mirror the 2:1 grid of the row above so BPM lines up under Play and
-		   Bars lines up under Regenerate (same width, same gutter). */
+		/* Even 1:1 split — Play / Regenerate up top, BPM / Bars below.
+		   The 2:1 split was tighter on the right column and the Bars
+		   label + buttons were overflowing on phones. */
 		display: grid;
-		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: var(--space-2);
 		align-items: stretch;
 	}
