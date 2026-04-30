@@ -4,6 +4,7 @@
 	import GlyphIcon from '$lib/components/GlyphIcon.svelte';
 	import NoteIcon from '$lib/components/NoteIcon.svelte';
 	import NoteLengthPicker from '$lib/components/NoteLengthPicker.svelte';
+	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
 	import { appState } from '$lib/state/app-state.svelte';
 	import * as actions from '$lib/state/actions.svelte';
 	import { environment } from '$lib/state/environment.svelte';
@@ -107,6 +108,10 @@
 	}
 
 </script>
+
+{#snippet hihatEighthIcon()}<NoteIcon length="eighth" size={18} />{/snippet}
+{#snippet hihatSixteenthIcon()}<NoteIcon length="sixteenth" size={18} />{/snippet}
+{#snippet hihatTripletIcon()}<NoteIcon length="eighth-triplet" size={18} />{/snippet}
 
 <svelte:head>
 	<title>Rhythm Section</title>
@@ -278,60 +283,36 @@
 				</button>
 			</div>
 		</div>
-		<div class="settings-row">
-			<span class="group-label">Rhythm audio</span>
-			<div class="group">
-				<button
-					type="button"
-					aria-pressed={rhythmMode === 'off'}
-					onclick={() => actions.setRhythmMode('off')}>Off</button
-				>
-				<button
-					type="button"
-					aria-pressed={rhythmMode === 'drum'}
-					onclick={() => actions.setRhythmMode('drum')}>Drum</button
-				>
-				<button
-					type="button"
-					aria-pressed={rhythmMode === 'bass'}
-					onclick={() => actions.setRhythmMode('bass')}>Bass</button
-				>
-			</div>
-		</div>
-		<div class="settings-row">
-			<button
-				type="button"
-				class="icon-btn"
-				aria-pressed={appState.settings.snareOnBackbeats}
-				aria-label="Snare on beats 2 and 4"
-				title="Snare on beats 2 and 4"
-				onclick={actions.toggleSnareOnBackbeats}
-			>
-				<GlyphIcon glyph="snare" size={22} />
-			</button>
-			<span class="group-label">Hihat</span>
-			<div class="group">
-				<button
-					type="button"
-					aria-pressed={appState.settings.hihatSubdivision === 'off'}
-					onclick={() => actions.setHihatSubdivision('off')}
-				>
-					Off
-				</button>
-				{#each [{ key: 'eighth', length: 'eighth' }, { key: 'sixteenth', length: 'sixteenth' }, { key: 'triplet', length: 'eighth-triplet' }] as opt (opt.key)}
-					<button
-						type="button"
-						class="icon-btn"
-						aria-pressed={appState.settings.hihatSubdivision === opt.key}
-						aria-label={`Hihat ${opt.key}`}
-						title={`Hihat ${opt.key}`}
-						onclick={() => actions.setHihatSubdivision(opt.key as 'eighth' | 'sixteenth' | 'triplet')}
-					>
-						<NoteIcon length={opt.length as NoteLength} size={18} />
-					</button>
-				{/each}
-			</div>
-		</div>
+		<SegmentedControl
+			label="Rhythm audio"
+			value={rhythmMode}
+			options={[
+				{ value: 'off', label: 'Off' },
+				{ value: 'drum', label: 'Drum' },
+				{ value: 'bass', label: 'Bass' }
+			]}
+			onChange={actions.setRhythmMode}
+		/>
+		<SegmentedControl
+			label="Snare"
+			value={appState.settings.snareOnBackbeats}
+			options={[
+				{ value: false, label: 'Off' },
+				{ value: true, label: 'On' }
+			]}
+			onChange={actions.setSnareOnBackbeats}
+		/>
+		<SegmentedControl
+			label="Hihat"
+			value={appState.settings.hihatSubdivision}
+			options={[
+				{ value: 'off', label: 'Off' },
+				{ value: 'eighth', label: 'eighth note', icon: hihatEighthIcon },
+				{ value: 'sixteenth', label: 'sixteenth note', icon: hihatSixteenthIcon },
+				{ value: 'triplet', label: 'eighth triplet', icon: hihatTripletIcon }
+			]}
+			onChange={actions.setHihatSubdivision}
+		/>
 	</section>
 
 	<section class="card settings">

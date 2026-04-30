@@ -170,6 +170,10 @@ export function toggleSnareOnBackbeats(): void {
 	appState.settings.snareOnBackbeats = !appState.settings.snareOnBackbeats;
 }
 
+export function setSnareOnBackbeats(on: boolean): void {
+	appState.settings.snareOnBackbeats = on;
+}
+
 export function setHihatSubdivision(s: HihatSubdivision): void {
 	appState.settings.hihatSubdivision = s;
 }
