@@ -23,27 +23,26 @@
 	}
 </script>
 
-<div class="row">
-	{#each options as o (o.value)}
-		<button
-			type="button"
-			class="icon-btn"
-			aria-pressed={value.includes(o.value)}
-			title={o.label}
-			aria-label={o.label}
-			onclick={() => toggle(o.value)}
-		>
-			<NoteIcon length={o.value} />
-		</button>
-	{/each}
-</div>
+<!--
+	Buttons are emitted via a fragment, not wrapped in a flex container.
+	The page-level .picker-row is the flex container, so additional sibling
+	buttons (rest, tie) wrap together with the note-length buttons instead
+	of being pushed to a new row as a single unit.
+-->
+{#each options as o (o.value)}
+	<button
+		type="button"
+		class="icon-btn"
+		aria-pressed={value.includes(o.value)}
+		title={o.label}
+		aria-label={o.label}
+		onclick={() => toggle(o.value)}
+	>
+		<NoteIcon length={o.value} />
+	</button>
+{/each}
 
 <style>
-	.row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.4rem;
-	}
 	.icon-btn {
 		width: 2.75rem;
 		height: 2.75rem;
