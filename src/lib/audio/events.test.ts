@@ -126,21 +126,20 @@ describe('buildEventList', () => {
 		expect(hits[1].durationSec).toBeCloseTo(1);
 	});
 
-	it('overlays snare on beats 2 + 4 in drum mode', () => {
+	it('snareOnBackbeats overlays snare on beats 2 + 4', () => {
 		const list = buildEventList({
 			events: [quarter(), quarter(), quarter(), quarter()],
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true,
-			rhythmInstrument: 'drum'
+			snareOnBackbeats: true
 		});
 		const snares = list.filter((e) => e.type === 'snare');
 		expect(snares.map((e) => e.time)).toEqual([1, 3]);
 	});
 
-	it('hihat subdivision uses 8ths by default', () => {
+	it('snareOnBackbeats stays silent when off (independent of drum mode)', () => {
 		const list = buildEventList({
 			events: [],
 			bars: 1,
@@ -149,64 +148,75 @@ describe('buildEventList', () => {
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
 			rhythmAudio: true,
 			rhythmInstrument: 'drum',
-			allowedLengths: ['quarter', 'eighth']
+			snareOnBackbeats: false
+		});
+		expect(list.filter((e) => e.type === 'snare').length).toBe(0);
+	});
+
+	it('hihatSubdivision=eighth produces 8 hits per bar', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			hihatSubdivision: 'eighth'
 		});
 		const hihats = list.filter((e) => e.type === 'hihat');
 		expect(hihats.length).toBe(8);
 	});
 
-	it('hihat upgrades to 16ths when sixteenth is in allowedLengths', () => {
+	it('hihatSubdivision=sixteenth produces 16 hits per bar', () => {
 		const list = buildEventList({
 			events: [],
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true,
-			rhythmInstrument: 'drum',
-			allowedLengths: ['quarter', 'eighth', 'sixteenth']
+			hihatSubdivision: 'sixteenth'
 		});
-		const hihats = list.filter((e) => e.type === 'hihat');
-		expect(hihats.length).toBe(16);
+		expect(list.filter((e) => e.type === 'hihat').length).toBe(16);
 	});
 
-	it('hihat goes triplet when eighth-triplet is allowed (beats 16ths)', () => {
+	it('hihatSubdivision=triplet produces 12 hits per bar', () => {
 		const list = buildEventList({
 			events: [],
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true,
-			rhythmInstrument: 'drum',
-			allowedLengths: ['quarter', 'sixteenth', 'eighth-triplet']
+			hihatSubdivision: 'triplet'
 		});
-		const hihats = list.filter((e) => e.type === 'hihat');
-		expect(hihats.length).toBe(12); // 3 per beat × 4 beats
+		expect(list.filter((e) => e.type === 'hihat').length).toBe(12);
 	});
 
-	it('drum overlay only fires when rhythmAudio is on AND instrument is drum', () => {
-		const off = buildEventList({
+	it('hihatSubdivision=off emits no hihat events', () => {
+		const list = buildEventList({
+			events: [],
+			bars: 1,
+			bpm: 60,
+			startTime: 0,
+			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
+			hihatSubdivision: 'off'
+		});
+		expect(list.filter((e) => e.type === 'hihat').length).toBe(0);
+	});
+
+	it('snare and hihat fire independently of rhythmAudio mode', () => {
+		// Both should sound even without rhythm audio (e.g. metronome-only
+		// practice with a hihat shuffle).
+		const list = buildEventList({
 			events: [],
 			bars: 1,
 			bpm: 60,
 			startTime: 0,
 			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
 			rhythmAudio: false,
-			rhythmInstrument: 'drum'
+			snareOnBackbeats: true,
+			hihatSubdivision: 'eighth'
 		});
-		expect(off.filter((e) => e.type === 'snare' || e.type === 'hihat').length).toBe(0);
-
-		const bassMode = buildEventList({
-			events: [],
-			bars: 1,
-			bpm: 60,
-			startTime: 0,
-			metronome: metronome({ enabled: false, emphasizeFirstBeat: false }),
-			rhythmAudio: true,
-			rhythmInstrument: 'bass'
-		});
-		expect(bassMode.filter((e) => e.type === 'snare' || e.type === 'hihat').length).toBe(0);
+		expect(list.filter((e) => e.type === 'snare').length).toBe(2);
+		expect(list.filter((e) => e.type === 'hihat').length).toBe(8);
 	});
 
 	it('always emits a highlight event for every rhythm event (rest, tied, or not)', () => {

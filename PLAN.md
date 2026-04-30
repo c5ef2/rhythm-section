@@ -195,11 +195,11 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 
 - Default **off**; user toggles on per session (persisted via the share codec / settings).
 - **Instrument**: drum kit *or* bass (fretless bass at A1). UI is a single segmented control: Off / Drum / Bass.
-- **Drum mode is a full groove**, not just a kick:
-  - Kick on every non-rest, non-tied-continuation rhythm event.
-  - Snare on beats 2 and 4 of every bar.
-  - Hihat at the most-fine subdivision the user has enabled — triplet (3/beat) if `eighth-triplet` is in `allowedLengths`, else 16th (4/beat) if `sixteenth` is allowed, else 8th (2/beat).
+- **Drum mode** plays kick on every non-rest, non-tied-continuation rhythm event.
 - **Bass mode** plays one fretless-bass note per non-rest, non-tied-continuation event; sustain = sum of the tied group.
+- **Snare and hihat** are independent overlays controlled by `snareOnBackbeats` (boolean) and `hihatSubdivision` (`'off' | 'eighth' | 'sixteenth' | 'triplet'`). They fire regardless of `rhythmAudio` mode (drum/bass/off), so the user can layer a snare backbeat or hihat shuffle over a bass-only practice or even pure metronome practice.
+  - Snare = beats 2 and 4 of every bar.
+  - Hihat = 2 / 3 / 4 hits per beat depending on subdivision. `'off'` skips it entirely.
 - The bundled SoundFont (`static/rhythm.sf3`, ≈770 KB) is **preloaded eagerly** the moment the page mounts:
   - `Player.preload()` creates the AudioContext (suspended), runs `configureIosPlayback`, registers `spessasynth_processor.min.js` as an audio worklet, fetches `static/rhythm.sf3`, and primes the `WorkletSynthesizer` so the first Play press is instant.
   - `appState.soundFontStatus` cycles `idle → loading → ready` (or `error` on a failed fetch).
@@ -233,9 +233,9 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 - **Settings persistence**: `localStorage[rhythm-section:v1]` holds the JSON-serialised `Settings` object.
   - On load, payload is **merged with `DEFAULT_SETTINGS`** (`{ ...DEFAULT_SETTINGS, ...parsed, metronome: { ...DEFAULT_SETTINGS.metronome, ...parsed.metronome } }`) so a payload from an older schema (missing e.g. `rhythmAudio`) auto-gets defaults instead of silently turning features off.
   - Loaded settings also pass through `sanitise()` which drops any `allowedLengths` entries the current build no longer recognises (e.g. `dotted-half` from an old payload).
-- **Share URL** format: `#s=<base64url(packed-binary)>` — typically **12 characters** (down from ~360 before the compact encoding landed).
-  - Layout: 1 version byte (`0x01`) + 28 bit-packed flag bits + 32-bit little-endian seed = 9 bytes total. The flags pack the BPM (6-bit index into the Maelzel notch table), bars (1 bit), `allowedLengths` (7-bit bitmask), `metronome.countedBeats` (4-bit bitmask), `metronome.division` (3-bit index), and seven 1-bit booleans (metronome.enabled, emphasizeFirstBeat, rhythmInstrument drum=0/bass=1, rhythmAudio, allowRests, allowTies, countIn).
-  - **Legacy support.** `decodeShare` first checks for the binary version byte; if absent it tries the old base64-of-JSON format. So URLs already in the wild keep working. Migration shims in the legacy path still set defaults for missing fields (`rhythmAudio` → `false`, `metronome.countedBeats` → `[true, true, true, true]`) and strip dropped fields (`loop`).
+- **Share URL** format: `#s=<base64url(packed-binary)>` — typically **12 characters**.
+  - Layout: 1 version byte + 31 bit-packed flag bits + 32-bit little-endian seed = 9 bytes total. The flags pack the BPM (6-bit index into the Maelzel notch table), bars (1 bit), `allowedLengths` (7-bit bitmask), `metronome.countedBeats` (4-bit bitmask), `metronome.division` (3-bit index), nine 1-bit booleans (metronome.enabled, emphasizeFirstBeat, rhythmInstrument drum=0/bass=1, rhythmAudio, allowRests, allowTies, countIn, snareOnBackbeats), and a 2-bit `hihatSubdivision` index.
+  - **No legacy fallback.** Bumping the version byte invalidates every URL produced before the bump — `decodeShare` returns null and the page falls back to localStorage / `DEFAULT_SETTINGS`. Old in-the-wild URLs cease to load their state, on purpose: the maintenance cost of multi-version decoders + migration shims wasn't worth it.
   - **Live-synced into the address bar.** An effect on the page calls `updateUrlFromState()` whenever any setting changes; the new URL is written via `history.replaceState` (no extra history entries) so users can copy the address bar at any moment and get a working share link without pressing the Share button.
   - Decode is shape-validated by `isSharedState`.
   - The Share button (icon-only, top-right of the header) uses `navigator.share({ title, url })` when supported and falls back to copying the URL to the clipboard. No image attachment — link previews are the destination app's responsibility, fed by static `og:` meta tags. The handler calls `navigator.share.call(navigator, …)` because Safari's WebIDL guard rejects the bare invocation.

@@ -24,7 +24,10 @@ describe('settings persistence', () => {
 
 	it('returns defaults when no hash and no stored value', () => {
 		const s = loadSettings({ storage: storage as unknown as Storage, hash: '' });
-		expect(s).toEqual(DEFAULT_SETTINGS);
+		// seed is randomised on a fresh load so users don't get the same
+		// rhythm twice; everything else matches DEFAULT_SETTINGS.
+		expect({ ...s, seed: 0 }).toEqual({ ...DEFAULT_SETTINGS, seed: 0 });
+		expect(typeof s.seed).toBe('number');
 	});
 
 	it('round-trips via localStorage', () => {
@@ -57,6 +60,6 @@ describe('settings persistence', () => {
 	it('ignores corrupt stored JSON and returns defaults', () => {
 		storage.setItem(STORAGE_KEY, '{not json');
 		const loaded = loadSettings({ storage: storage as unknown as Storage, hash: '' });
-		expect(loaded).toEqual(DEFAULT_SETTINGS);
+		expect({ ...loaded, seed: 0 }).toEqual({ ...DEFAULT_SETTINGS, seed: 0 });
 	});
 });

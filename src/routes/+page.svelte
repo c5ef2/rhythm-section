@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Staff from '$lib/components/Staff.svelte';
+	import GlyphIcon from '$lib/components/GlyphIcon.svelte';
 	import NoteIcon from '$lib/components/NoteIcon.svelte';
 	import NoteLengthPicker from '$lib/components/NoteLengthPicker.svelte';
 	import { appState } from '$lib/state/app-state.svelte';
@@ -11,8 +12,6 @@
 	import type { MetronomeDivision, NoteLength } from '$lib/rhythm/types';
 
 	const NOTE_OPTIONS: { value: NoteLength; label: string }[] = [
-		{ value: 'whole', label: 'whole note' },
-		{ value: 'half', label: 'half note' },
 		{ value: 'quarter', label: 'quarter note' },
 		{ value: 'eighth', label: 'eighth note' },
 		{ value: 'sixteenth', label: 'sixteenth note' },
@@ -248,29 +247,33 @@
 	<section class="card settings">
 		<div class="settings-row">
 			<span class="group-label">Allowed note lengths</span>
-			<NoteLengthPicker
-				value={appState.settings.allowedLengths}
-				options={NOTE_OPTIONS}
-				onChange={actions.setAllowedLengths}
-			/>
-		</div>
-		<div class="settings-row">
-			<label>
-				<input
-					type="checkbox"
-					checked={appState.settings.allowRests}
-					onchange={actions.toggleAllowRests}
+			<div class="picker-row">
+				<NoteLengthPicker
+					value={appState.settings.allowedLengths}
+					options={NOTE_OPTIONS}
+					onChange={actions.setAllowedLengths}
 				/>
-				Include rests
-			</label>
-			<label>
-				<input
-					type="checkbox"
-					checked={appState.settings.allowTies}
-					onchange={actions.toggleAllowTies}
-				/>
-				Include ties
-			</label>
+				<button
+					type="button"
+					class="icon-btn"
+					aria-pressed={appState.settings.allowRests}
+					aria-label="Include rests"
+					title="Include rests"
+					onclick={actions.toggleAllowRests}
+				>
+					<GlyphIcon glyph="rest" size={22} />
+				</button>
+				<button
+					type="button"
+					class="icon-btn"
+					aria-pressed={appState.settings.allowTies}
+					aria-label="Include ties"
+					title="Include ties"
+					onclick={actions.toggleAllowTies}
+				>
+					<GlyphIcon glyph="tie" size={22} />
+				</button>
+			</div>
 		</div>
 		<div class="settings-row">
 			<span class="group-label">Rhythm audio</span>
@@ -290,6 +293,40 @@
 					aria-pressed={rhythmMode === 'bass'}
 					onclick={() => actions.setRhythmMode('bass')}>Bass</button
 				>
+			</div>
+		</div>
+		<div class="settings-row">
+			<button
+				type="button"
+				class="icon-btn"
+				aria-pressed={appState.settings.snareOnBackbeats}
+				aria-label="Snare on beats 2 and 4"
+				title="Snare on beats 2 and 4"
+				onclick={actions.toggleSnareOnBackbeats}
+			>
+				<GlyphIcon glyph="snare" size={22} />
+			</button>
+			<span class="group-label">Hihat</span>
+			<div class="group">
+				<button
+					type="button"
+					aria-pressed={appState.settings.hihatSubdivision === 'off'}
+					onclick={() => actions.setHihatSubdivision('off')}
+				>
+					Off
+				</button>
+				{#each [{ key: 'eighth', length: 'eighth' }, { key: 'sixteenth', length: 'sixteenth' }, { key: 'triplet', length: 'eighth-triplet' }] as opt (opt.key)}
+					<button
+						type="button"
+						class="icon-btn"
+						aria-pressed={appState.settings.hihatSubdivision === opt.key}
+						aria-label={`Hihat ${opt.key}`}
+						title={`Hihat ${opt.key}`}
+						onclick={() => actions.setHihatSubdivision(opt.key as 'eighth' | 'sixteenth' | 'triplet')}
+					>
+						<NoteIcon length={opt.length as NoteLength} size={18} />
+					</button>
+				{/each}
 			</div>
 		</div>
 	</section>
@@ -566,6 +603,13 @@
 		justify-content: center;
 		padding: 0;
 		min-height: 0;
+	}
+
+	.picker-row {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
 	}
 
 	.beat-picker {

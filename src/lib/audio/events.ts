@@ -1,4 +1,5 @@
 import type { MetronomeDivision, MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
+import type { HihatSubdivision } from '../state/share';
 
 const UNITS_PER_BEAT = 12;
 const BEATS_PER_BAR = 4;
@@ -48,6 +49,8 @@ export interface BuildEventListInput {
 	rhythmAudio?: boolean;
 	rhythmInstrument?: RhythmInstrument;
 	allowedLengths?: NoteLength[];
+	snareOnBackbeats?: boolean;
+	hihatSubdivision?: HihatSubdivision;
 	countInBars?: number;
 }
 
@@ -60,7 +63,8 @@ export function buildEventList(input: BuildEventListInput): AudioEvent[] {
 		metronome,
 		rhythmAudio = false,
 		rhythmInstrument = 'drum',
-		allowedLengths = [],
+		snareOnBackbeats = false,
+		hihatSubdivision = 'off',
 		countInBars = 0
 	} = input;
 	const secPerBeat = 60 / bpm;
@@ -76,44 +80,55 @@ export function buildEventList(input: BuildEventListInput): AudioEvent[] {
 		pushMetronomeClicks(out, metronome, bars, secPerBeat, contentStart);
 	}
 	pushRhythmAndHighlights(out, events, secPerBeat, contentStart, rhythmAudio, rhythmInstrument);
-	if (rhythmAudio && rhythmInstrument === 'drum') {
-		pushDrumGroove(out, bars, secPerBeat, contentStart, allowedLengths);
+	if (snareOnBackbeats) pushSnareBackbeats(out, bars, secPerBeat, contentStart);
+	if (hihatSubdivision !== 'off') {
+		pushHihat(out, bars, secPerBeat, contentStart, hihatSubdivision);
 	}
 
 	return out.sort((a, b) => a.time - b.time);
 }
 
-/**
- * Add the steady drum-kit overlay that plays alongside the rhythm-driven
- * kick: snare on beats 2 and 4, hihat on the most-fine subdivision the
- * user has enabled (triplet > 16th > 8th).
- */
-function pushDrumGroove(
+/** Snare on beats 2 and 4 of every bar — the classic backbeat. */
+function pushSnareBackbeats(
 	out: AudioEvent[],
 	bars: number,
 	secPerBeat: number,
-	startTime: number,
-	allowedLengths: NoteLength[]
+	startTime: number
 ): void {
 	for (let bar = 0; bar < bars; bar++) {
-		// Snare on beats 2 and 4 (zero-indexed 1 and 3).
 		for (const beat of [1, 3]) {
 			out.push({ type: 'snare', time: startTime + (bar * BEATS_PER_BAR + beat) * secPerBeat });
 		}
 	}
-	const hihatPerBeat = hihatSubdivision(allowedLengths);
-	const totalHits = hihatPerBeat * BEATS_PER_BAR * bars;
+}
+
+/** Hihat at the user-chosen subdivision — independent of the rhythm itself. */
+function pushHihat(
+	out: AudioEvent[],
+	bars: number,
+	secPerBeat: number,
+	startTime: number,
+	subdivision: HihatSubdivision
+): void {
+	const perBeat = hihatHitsPerBeat(subdivision);
+	if (perBeat === 0) return;
+	const totalHits = perBeat * BEATS_PER_BAR * bars;
 	for (let i = 0; i < totalHits; i++) {
-		out.push({ type: 'hihat', time: startTime + (i / hihatPerBeat) * secPerBeat });
+		out.push({ type: 'hihat', time: startTime + (i / perBeat) * secPerBeat });
 	}
 }
 
-function hihatSubdivision(allowedLengths: NoteLength[]): number {
-	// Triplet feel beats binary 16ths because mixing them sounds bad. Then
-	// the most-fine binary subdivision the user has on. Default 8ths.
-	if (allowedLengths.includes('eighth-triplet')) return 3;
-	if (allowedLengths.includes('sixteenth')) return 4;
-	return 2;
+function hihatHitsPerBeat(s: HihatSubdivision): number {
+	switch (s) {
+		case 'off':
+			return 0;
+		case 'eighth':
+			return 2;
+		case 'triplet':
+			return 3;
+		case 'sixteenth':
+			return 4;
+	}
 }
 
 function pushCountInClicks(

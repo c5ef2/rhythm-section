@@ -1,4 +1,5 @@
 import type { MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
+import type { HihatSubdivision } from '../state/share';
 import { configureIosPlayback, primeIosPlayback } from './ios-audio';
 import { Scheduler, type Synth } from './scheduler';
 import { createSoundFontSynth, fetchBundledSoundFont } from './soundfont-synth';
@@ -13,6 +14,8 @@ export interface PlayInputs {
 	rhythmAudio: boolean;
 	rhythmInstrument: RhythmInstrument;
 	allowedLengths: NoteLength[];
+	snareOnBackbeats: boolean;
+	hihatSubdivision: HihatSubdivision;
 	countInBars: number;
 	loop: boolean;
 }
@@ -124,6 +127,8 @@ export class Player {
 			rhythmAudio: inputs.rhythmAudio,
 			rhythmInstrument: inputs.rhythmInstrument,
 			allowedLengths: inputs.allowedLengths,
+			snareOnBackbeats: inputs.snareOnBackbeats,
+			hihatSubdivision: inputs.hihatSubdivision,
 			countInBars: inputs.countInBars,
 			loop: inputs.loop,
 			onHighlight: (i) => this.callbacks.onActiveNote(i),

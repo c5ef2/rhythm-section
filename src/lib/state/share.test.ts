@@ -15,6 +15,8 @@ const sample: SharedState = {
 		countedBeats: [true, false, true, false]
 	},
 	rhythmInstrument: 'bass',
+	snareOnBackbeats: true,
+	hihatSubdivision: 'sixteenth',
 	countIn: true,
 	rhythmAudio: true,
 	seed: 123456789
@@ -53,31 +55,15 @@ describe('share codec', () => {
 		expect(encodeShare(a)).toBe(encodeShare(b));
 	});
 
-	it('still decodes legacy base64-of-JSON share URLs', () => {
-		// Format the codec used to emit before the binary format landed.
+	it('returns null for share URLs from any older version', () => {
+		// Old base64-of-JSON payload — current decoder requires the binary
+		// version tag and falls through to default settings otherwise.
 		const json = JSON.stringify(sample);
 		const bytes = new TextEncoder().encode(json);
 		let bin = '';
 		for (const b of bytes) bin += String.fromCharCode(b);
 		const legacy = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-		expect(decodeShare(legacy)).toEqual(sample);
-	});
-
-	it('legacy decode applies the loop / countedBeats migrations', () => {
-		// A real-world legacy URL might have `loop: true` (now removed) and
-		// no countedBeats (defaults to [true, true, true, true]).
-		const legacyState = {
-			...sample,
-			loop: true,
-			metronome: { ...sample.metronome, countedBeats: undefined }
-		};
-		const json = JSON.stringify(legacyState);
-		const bytes = new TextEncoder().encode(json);
-		let bin = '';
-		for (const b of bytes) bin += String.fromCharCode(b);
-		const legacy = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-		const decoded = decodeShare(legacy);
-		expect(decoded?.metronome.countedBeats).toEqual([true, true, true, true]);
+		expect(decodeShare(legacy)).toBeNull();
 	});
 
 	it('round-trips every Maelzel BPM', () => {

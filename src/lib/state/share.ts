@@ -2,6 +2,7 @@ import { MAELZEL_BPMS, snapBpm } from '../audio/bpm';
 import type { MetronomeDivision, MetronomeOptions, NoteLength } from '../rhythm/types';
 
 export type RhythmInstrument = 'drum' | 'bass';
+export type HihatSubdivision = 'off' | 'eighth' | 'sixteenth' | 'triplet';
 
 export interface SharedState {
 	bpm: number;
@@ -11,6 +12,8 @@ export interface SharedState {
 	allowTies: boolean;
 	metronome: MetronomeOptions;
 	rhythmInstrument: RhythmInstrument;
+	snareOnBackbeats: boolean;
+	hihatSubdivision: HihatSubdivision;
 	countIn: boolean;
 	rhythmAudio: boolean;
 	seed: number;
@@ -18,11 +21,11 @@ export interface SharedState {
 
 /*
  * Compact binary share format. Goal: a hash short enough to type out by
- * hand, instead of the ~360-byte base64-of-JSON we used to ship.
+ * hand.
  *
  * Layout (little-endian, bit-packed):
  *
- *   byte 0          version tag (0x01)
+ *   byte 0          version tag (PACK_VERSION)
  *   bits 8-13   (6) bpm-index into MAELZEL_BPMS
  *   bit  14     (1) bars (0 = 1 bar, 1 = 2 bars)
  *   bits 15-21  (7) allowedLengths bitmask (see LENGTH_BITS below)
@@ -35,15 +38,20 @@ export interface SharedState {
  *   bit  33     (1) allowRests
  *   bit  34     (1) allowTies
  *   bit  35     (1) countIn
+ *   bit  36     (1) snareOnBackbeats
+ *   bits 37-38  (2) hihatSubdivision (HIHAT_SUBDIVISIONS index)
  *   bits 40-71 (32) seed (uint32 LE)
  *
  *   total = 9 bytes  →  base64url ≈ 12 characters.
  *
- * The legacy base64-of-JSON payload still decodes (used by existing share
- * links circulating in the wild). The encoder always emits the compact form.
+ * Bumping PACK_VERSION breaks every share URL produced before the bump —
+ * decodeShare returns null and the page falls back to localStorage / the
+ * default settings. We don't attempt forward compatibility.
  */
 
-const PACK_VERSION = 0x01;
+const PACK_VERSION = 0x02;
+
+const HIHAT_SUBDIVISIONS: HihatSubdivision[] = ['off', 'eighth', 'sixteenth', 'triplet'];
 
 const LENGTH_BITS: NoteLength[] = [
 	'whole',
@@ -63,13 +71,9 @@ export function encodeShare(state: SharedState): string {
 
 export function decodeShare(encoded: string): SharedState | null {
 	const bytes = fromBase64UrlToBytes(encoded);
-	if (!bytes) return null;
-	if (bytes.length > 0 && bytes[0] === PACK_VERSION) {
-		const unpacked = unpackBinary(bytes);
-		return unpacked && isSharedState(unpacked) ? unpacked : null;
-	}
-	// Legacy base64-of-JSON payload — kept so old links keep working.
-	return decodeLegacyJson(bytes);
+	if (!bytes || bytes.length === 0 || bytes[0] !== PACK_VERSION) return null;
+	const unpacked = unpackBinary(bytes);
+	return unpacked && isSharedState(unpacked) ? unpacked : null;
 }
 
 // --- compact binary encoding -------------------------------------------------
@@ -91,7 +95,9 @@ function packBinary(state: SharedState): Uint8Array {
 	w.write(state.allowRests ? 1 : 0, 1);
 	w.write(state.allowTies ? 1 : 0, 1);
 	w.write(state.countIn ? 1 : 0, 1);
-	const flagBytes = w.bytes(); // 4 bytes (28 bits → ceil to 4)
+	w.write(state.snareOnBackbeats ? 1 : 0, 1);
+	w.write(hihatSubdivisionIndex(state.hihatSubdivision), 2);
+	const flagBytes = w.bytes(); // 4 bytes (31 bits → ceil to 4)
 	out.set(flagBytes, 1);
 
 	const seed = state.seed >>> 0;
@@ -117,6 +123,10 @@ function unpackBinary(bytes: Uint8Array): SharedState | null {
 	const allowRests = r.read(1) === 1;
 	const allowTies = r.read(1) === 1;
 	const countIn = r.read(1) === 1;
+	const snareOnBackbeats = r.read(1) === 1;
+	const hihatIdx = r.read(2);
+	if (hihatIdx >= HIHAT_SUBDIVISIONS.length) return null;
+	const hihatSubdivision = HIHAT_SUBDIVISIONS[hihatIdx];
 
 	const seed =
 		bytes[5] | (bytes[6] << 8) | (bytes[7] << 16) | ((bytes[8] << 24) >>> 0);
@@ -137,10 +147,17 @@ function unpackBinary(bytes: Uint8Array): SharedState | null {
 			countedBeats: maskToCountedBeats(countedMask)
 		},
 		rhythmInstrument,
+		snareOnBackbeats,
+		hihatSubdivision,
 		countIn,
 		rhythmAudio,
 		seed: seed >>> 0
 	};
+}
+
+function hihatSubdivisionIndex(s: HihatSubdivision): number {
+	const i = HIHAT_SUBDIVISIONS.indexOf(s);
+	return i >= 0 ? i : 0;
 }
 
 function bpmIndex(bpm: number): number {
@@ -227,27 +244,6 @@ class BitReader {
 	}
 }
 
-// --- legacy base64-of-JSON support ------------------------------------------
-
-function decodeLegacyJson(bytes: Uint8Array): SharedState | null {
-	try {
-		const json = new TextDecoder().decode(bytes);
-		const parsed = JSON.parse(json);
-		if (parsed && typeof parsed === 'object') {
-			const p = parsed as Record<string, unknown>;
-			if (typeof p.rhythmAudio !== 'boolean') p.rhythmAudio = false;
-			delete p.loop;
-			const metronome = p.metronome as Record<string, unknown> | undefined;
-			if (metronome && !Array.isArray(metronome.countedBeats)) {
-				metronome.countedBeats = [true, true, true, true];
-			}
-		}
-		return isSharedState(parsed) ? parsed : null;
-	} catch {
-		return null;
-	}
-}
-
 // --- base64url helpers -------------------------------------------------------
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -275,6 +271,11 @@ function fromBase64UrlToBytes(s: string): Uint8Array | null {
 function isSharedState(v: unknown): v is SharedState {
 	if (!v || typeof v !== 'object') return false;
 	const s = v as Record<string, unknown>;
+	const hihatOk =
+		s.hihatSubdivision === 'off' ||
+		s.hihatSubdivision === 'eighth' ||
+		s.hihatSubdivision === 'sixteenth' ||
+		s.hihatSubdivision === 'triplet';
 	return (
 		typeof s.bpm === 'number' &&
 		(s.bars === 1 || s.bars === 2) &&
@@ -284,6 +285,8 @@ function isSharedState(v: unknown): v is SharedState {
 		typeof s.seed === 'number' &&
 		typeof s.countIn === 'boolean' &&
 		typeof s.rhythmAudio === 'boolean' &&
+		typeof s.snareOnBackbeats === 'boolean' &&
+		hihatOk &&
 		(s.rhythmInstrument === 'drum' || s.rhythmInstrument === 'bass') &&
 		isMetronomeOptions(s.metronome)
 	);

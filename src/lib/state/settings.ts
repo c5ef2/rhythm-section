@@ -1,10 +1,14 @@
+import { randomSeed } from '../rng/seeded';
 import type { NoteLength } from '../rhythm/types';
 import { decodeShare } from './share';
 import type { SharedState } from './share';
 
+// Whole + half are still in the NoteLength type (the generator and notation
+// engines still know how to produce them, and the binary share format keeps
+// their bitmask slots so old links don't shift) but they're no longer
+// user-pickable. Settings loaded from storage / hash get filtered down to
+// this set on every load.
 const VALID_LENGTHS: ReadonlySet<NoteLength> = new Set([
-	'whole',
-	'half',
 	'quarter',
 	'eighth',
 	'sixteenth',
@@ -17,23 +21,37 @@ export const HASH_PREFIX = '#s=';
 
 export type Settings = SharedState;
 
-export const DEFAULT_SETTINGS: Settings = {
-	bpm: 120,
+/**
+ * Default state for a fresh user — `seed` is deliberately a *function*
+ * because we want a fresh random rhythm every time someone opens the app
+ * without any saved settings or share hash. {@link defaultSettings} returns
+ * a copy with the seed materialised; the constant `DEFAULT_SETTINGS` (kept
+ * for tests / the merge fallback) holds a deterministic seed of 1.
+ */
+const DEFAULT_SETTINGS_TEMPLATE: Omit<Settings, 'seed'> = {
+	bpm: 72,
 	bars: 1,
-	allowedLengths: ['quarter', 'eighth'],
+	allowedLengths: ['quarter', 'eighth', 'sixteenth'],
 	allowRests: true,
 	allowTies: false,
 	metronome: {
-		enabled: true,
+		enabled: false,
 		division: 'quarter',
 		emphasizeFirstBeat: true,
 		countedBeats: [true, true, true, true]
 	},
 	rhythmInstrument: 'drum',
-	countIn: true,
-	rhythmAudio: false,
-	seed: 1
+	snareOnBackbeats: true,
+	hihatSubdivision: 'eighth',
+	countIn: false,
+	rhythmAudio: true
 };
+
+export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_SETTINGS_TEMPLATE, seed: 1 };
+
+export function defaultSettings(): Settings {
+	return { ...DEFAULT_SETTINGS_TEMPLATE, seed: randomSeed() };
+}
 
 export interface LoadContext {
 	storage: Storage;
@@ -43,7 +61,7 @@ export interface LoadContext {
 export function loadSettings(ctx: LoadContext): Settings {
 	const fromHash = extractFromHash(ctx.hash);
 	if (fromHash) return sanitise(fromHash);
-	return sanitise(loadFromStorage(ctx.storage) ?? DEFAULT_SETTINGS);
+	return sanitise(loadFromStorage(ctx.storage) ?? defaultSettings());
 }
 
 /** Strip out any note-lengths that this version of the app no longer supports. */
@@ -68,11 +86,16 @@ function loadFromStorage(storage: Storage): Settings | null {
 	try {
 		const parsed = JSON.parse(raw) as Partial<Settings>;
 		// Merge with defaults so older stored payloads missing newer fields
-		// (e.g. rhythmAudio, loop) still produce a complete Settings object.
-		return { ...DEFAULT_SETTINGS, ...parsed, metronome: {
-			...DEFAULT_SETTINGS.metronome,
-			...(parsed.metronome ?? {})
-		} };
+		// (rhythmAudio, snareOnBackbeats, hihatSubdivision, …) still produce
+		// a complete Settings object.
+		return {
+			...DEFAULT_SETTINGS,
+			...parsed,
+			metronome: {
+				...DEFAULT_SETTINGS.metronome,
+				...(parsed.metronome ?? {})
+			}
+		};
 	} catch {
 		return null;
 	}

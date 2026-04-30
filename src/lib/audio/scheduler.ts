@@ -99,6 +99,8 @@ export class Scheduler {
 			rhythmAudio: this.cfg.rhythmAudio,
 			rhythmInstrument: this.cfg.rhythmInstrument,
 			allowedLengths: this.cfg.allowedLengths,
+			snareOnBackbeats: this.cfg.snareOnBackbeats,
+			hihatSubdivision: this.cfg.hihatSubdivision,
 			countInBars
 		});
 		this.highlights = this.events

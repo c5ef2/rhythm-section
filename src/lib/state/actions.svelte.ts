@@ -4,7 +4,8 @@ import { Player } from '../audio/player';
 import { randomSeed } from '../rng/seeded';
 import type { MetronomeDivision, NoteLength } from '../rhythm/types';
 import { appState } from './app-state.svelte';
-import { encodeShare, type RhythmInstrument } from './share';
+import { environment } from './environment.svelte';
+import { encodeShare, type HihatSubdivision, type RhythmInstrument } from './share';
 
 const player = browser
 	? new Player({
@@ -21,11 +22,18 @@ let preloadStarted = false;
 
 /**
  * Eagerly create the AudioContext and start fetching the bundled SoundFont
- * so the synth is ready by the time the user taps Play. Call once on app
+ * so the synth is ready by the time the user taps Play. Called once on app
  * mount; subsequent calls are a no-op.
+ *
+ * Skipped in standalone PWA mode: iOS suspends the AudioContext / its
+ * AudioWorklet across home-screen launches, leaving the synth in a state
+ * where `noteOn` is silently dropped. Creating it inside the first Play
+ * click instead avoids the corpse and the user just sees the normal
+ * "Loading…" spinner on the very first press.
  */
 export function preloadAudio(): void {
 	if (!player || preloadStarted) return;
+	if (environment.isStandalone) return;
 	preloadStarted = true;
 	void player.preload();
 }
@@ -40,6 +48,8 @@ function currentInputs() {
 		rhythmAudio: s.rhythmAudio,
 		rhythmInstrument: s.rhythmInstrument,
 		allowedLengths: s.allowedLengths,
+		snareOnBackbeats: s.snareOnBackbeats,
+		hihatSubdivision: s.hihatSubdivision,
 		countInBars: s.countIn ? 1 : 0,
 		loop: true
 	};
@@ -154,6 +164,14 @@ export function setRhythmMode(mode: 'off' | RhythmInstrument): void {
 	}
 	appState.settings.rhythmAudio = true;
 	appState.settings.rhythmInstrument = mode;
+}
+
+export function toggleSnareOnBackbeats(): void {
+	appState.settings.snareOnBackbeats = !appState.settings.snareOnBackbeats;
+}
+
+export function setHihatSubdivision(s: HihatSubdivision): void {
+	appState.settings.hihatSubdivision = s;
 }
 
 export function currentShareUrl(): string {
