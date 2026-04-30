@@ -95,43 +95,38 @@
 	box-sizing: border-box;
 }
 
-html,
-body {
+/*
+ * Status-bar / safe-area strategy (MDN-aligned):
+ *
+ *  - Manifest's `theme_color` drives the OS title/status-bar background
+ *    on platforms that respect it (Android Chrome PWA, desktop standalone).
+ *  - For platforms that don't (iOS PWA with status-bar-style="black-translucent"
+ *    extends content under the status bar), the brand colour lives on `html`
+ *    so the safe-area-inset-top region the body's content excludes always
+ *    shows the same brand-blue regardless of light/dark theme.
+ *  - body uses `background-clip: padding-box` so its page-gradient paints
+ *    only inside content-box; the padding-top reserves env(safe-area-inset-top)
+ *    of vertical space and that area renders the html background.
+ *
+ *  In a regular browser tab `safe-area-inset-top` resolves to 0 so the
+ *  exposed html strip has zero height and the layout is unchanged.
+ */
+html {
 	margin: 0;
 	padding: 0;
+	background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+	min-height: 100vh;
+}
+
+body {
+	margin: 0;
+	padding-top: env(safe-area-inset-top);
 	background: var(--page-gradient);
+	background-clip: padding-box;
 	color: var(--text);
 	min-height: 100vh;
 	font-size: 15px;
 	line-height: 1.5;
-}
-
-/*
- * iOS / Android PWA: the status-bar area sits *over* the page when
- * apple-mobile-web-app-status-bar-style="black-translucent". On a fresh
- * install in light mode that area renders as plain white because the body
- * gradient at the very top is still close to white. Paint a themed strip
- * the height of the safe-area inset so the status-bar always reads as a
- * branded header strip — uses the brand-blue gradient that matches the
- * Play button, looks deliberate in both light and dark mode, and gives
- * the white iOS status-bar text enough contrast.
- *
- * In a regular browser tab `env(safe-area-inset-top)` resolves to 0, so
- * the strip has zero height and is invisible.
- */
-body::before {
-	content: '';
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: env(safe-area-inset-top);
-	background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
-	z-index: 1000;
-	pointer-events: none;
-}
-body {
-	padding-top: env(safe-area-inset-top);
 }
 
 h1,
