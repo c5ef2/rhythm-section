@@ -220,9 +220,11 @@
 		<div class="transport-bottom">
 			<div class="bpm-stepper" role="group" aria-label="BPM">
 				<span class="group-label">BPM</span>
-				<button type="button" aria-label="Slower" onclick={() => actions.stepBpm(-1)}>−</button>
-				<output>{appState.settings.bpm}</output>
-				<button type="button" aria-label="Faster" onclick={() => actions.stepBpm(1)}>+</button>
+				<div class="bpm-stepper-controls">
+					<button type="button" aria-label="Slower" onclick={() => actions.stepBpm(-1)}>−</button>
+					<output>{appState.settings.bpm}</output>
+					<button type="button" aria-label="Faster" onclick={() => actions.stepBpm(1)}>+</button>
+				</div>
 			</div>
 			<div class="group bars-group">
 				<span class="group-label">Bars</span>
@@ -483,7 +485,13 @@
 	}
 
 	.bpm-stepper {
-		display: inline-flex;
+		/* Three-column grid: label on the left, an invisible spacer of the
+		   same width on the right, and the −/value/+ stepper inline-flex
+		   centred in the middle column. That keeps − and + equidistant
+		   from the panel edges instead of pinning + to the right while −
+		   sits next to the BPM label. */
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
 		gap: var(--space-1);
 		background: var(--panel-2);
@@ -493,6 +501,22 @@
 		flex: 1 1 auto;
 		box-shadow: var(--shadow-sm);
 	}
+	.bpm-stepper::after {
+		/* Invisible mirror of the BPM label sits in the third column so
+		   the centre column is geometrically centred regardless of the
+		   label's width. Pseudo-element on the grid container itself
+		   becomes a third grid item; one on the label child would not. */
+		content: 'BPM';
+		visibility: hidden;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+	.bpm-stepper-controls {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-1);
+	}
 	.bpm-stepper button {
 		background: transparent;
 		border: none;
@@ -500,7 +524,6 @@
 		font-weight: 600;
 		font-size: 1rem;
 		min-height: 2.25rem;
-		flex: 0 0 auto;
 		box-shadow: none;
 	}
 	.bpm-stepper button:hover {
@@ -512,7 +535,6 @@
 		font-variant-numeric: tabular-nums;
 		font-weight: 600;
 		font-size: 1.1rem;
-		flex: 1 1 auto;
 	}
 
 	.group {
