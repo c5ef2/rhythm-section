@@ -95,34 +95,11 @@
 	box-sizing: border-box;
 }
 
-/*
- * Status-bar / safe-area strategy (MDN-aligned):
- *
- *  - Manifest's `theme_color` drives the OS title/status-bar background
- *    on platforms that respect it (Android Chrome PWA, desktop standalone).
- *  - For platforms that don't (iOS PWA with status-bar-style="black-translucent"
- *    extends content under the status bar), the brand colour lives on `html`
- *    so the safe-area-inset-top region the body's content excludes always
- *    shows the same brand-blue regardless of light/dark theme.
- *  - body uses `background-clip: padding-box` so its page-gradient paints
- *    only inside content-box; the padding-top reserves env(safe-area-inset-top)
- *    of vertical space and that area renders the html background.
- *
- *  In a regular browser tab `safe-area-inset-top` resolves to 0 so the
- *  exposed html strip has zero height and the layout is unchanged.
- */
-html {
-	margin: 0;
-	padding: 0;
-	background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
-	min-height: 100vh;
-}
-
+html,
 body {
 	margin: 0;
-	padding-top: env(safe-area-inset-top);
+	padding: 0;
 	background: var(--page-gradient);
-	background-clip: padding-box;
 	color: var(--text);
 	min-height: 100vh;
 	font-size: 15px;
