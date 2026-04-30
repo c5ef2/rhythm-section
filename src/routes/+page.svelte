@@ -448,10 +448,12 @@
 		gap: var(--space-2);
 	}
 	.transport-bottom {
-		display: flex;
+		/* Mirror the 2:1 grid of the row above so BPM lines up under Play and
+		   Bars lines up under Regenerate (same width, same gutter). */
+		display: grid;
+		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
 		gap: var(--space-2);
 		align-items: stretch;
-		flex-wrap: wrap;
 	}
 	.play,
 	.regenerate {
@@ -544,7 +546,8 @@
 		box-shadow: 0 2px 10px -4px color-mix(in oklab, var(--brand) 50%, transparent);
 	}
 	.bars-group {
-		flex: 0 0 auto;
+		display: flex;
+		justify-content: space-between;
 		gap: 0.35rem;
 		padding-left: 0.6rem;
 		padding-right: 0.4rem;
@@ -554,6 +557,7 @@
 	}
 	.bars-group button {
 		min-width: 2.4rem;
+		flex: 1 1 0;
 	}
 	.group-label {
 		color: var(--text-muted);
