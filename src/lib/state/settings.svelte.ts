@@ -1,10 +1,15 @@
 import { browser } from '$app/environment';
+import { environment } from './environment.svelte';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './settings';
 import type { Settings } from './settings';
 
 export function readInitialSettings(): Settings {
 	if (!browser) return DEFAULT_SETTINGS;
-	return loadSettings({ storage: localStorage, hash: window.location.hash });
+	return loadSettings({
+		storage: localStorage,
+		hash: window.location.hash,
+		standalone: environment.isStandalone
+	});
 }
 
 export function persist(settings: Settings): void {

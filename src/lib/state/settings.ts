@@ -56,10 +56,22 @@ export function defaultSettings(): Settings {
 export interface LoadContext {
 	storage: Storage;
 	hash: string;
+	/**
+	 * When true, the URL hash is ignored and only localStorage / defaults are
+	 * consulted. iOS Safari (and some other shells) capture the URL the user
+	 * installed from and re-launch the PWA at THAT URL every cold launch,
+	 * ignoring later `history.replaceState` rewrites. So if the user
+	 * installed while the URL carried a `#s=…` hash, every cold launch would
+	 * resurrect those install-moment settings and overwrite whatever the
+	 * user has since saved. The Share button in standalone mode goes through
+	 * `navigator.share` and computes its URL from the current state, so we
+	 * don't need the hash to round-trip inside the app.
+	 */
+	standalone?: boolean;
 }
 
 export function loadSettings(ctx: LoadContext): Settings {
-	const fromHash = extractFromHash(ctx.hash);
+	const fromHash = ctx.standalone ? null : extractFromHash(ctx.hash);
 	if (fromHash) return sanitise(fromHash);
 	return sanitise(loadFromStorage(ctx.storage) ?? defaultSettings());
 }

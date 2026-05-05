@@ -188,9 +188,15 @@ export function currentShareUrl(): string {
  * Replace the current URL with one that encodes the current settings, without
  * pushing a new history entry — call this whenever any persisted setting
  * changes so the address bar always reflects what the user is hearing.
+ *
+ * No-op in standalone PWA mode: there's no URL bar to mirror to, and on iOS
+ * a stale install-time hash already takes precedence over `replaceState`
+ * rewrites for cold launches, so writing the hash here just couples the app
+ * to a URL the user never sees.
  */
 export function updateUrlFromState(): void {
 	if (!browser) return;
+	if (environment.isStandalone) return;
 	const url = currentShareUrl();
 	if (url === window.location.href) return;
 	history.replaceState(history.state, '', url);

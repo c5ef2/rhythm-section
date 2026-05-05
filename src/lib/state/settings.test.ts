@@ -62,4 +62,24 @@ describe('settings persistence', () => {
 		const loaded = loadSettings({ storage: storage as unknown as Storage, hash: '' });
 		expect({ ...loaded, seed: 0 }).toEqual({ ...DEFAULT_SETTINGS, seed: 0 });
 	});
+
+	// In a standalone PWA the hash is essentially write-only — iOS Safari
+	// (and some other shells) capture the URL at install time and re-launch
+	// the app at THAT URL every cold launch, ignoring later
+	// `history.replaceState` rewrites. So if the user installed while the
+	// URL had a `#s=…` hash, every cold launch would resurrect those
+	// install-moment settings and silently overwrite whatever the user has
+	// since saved. Ignore the hash entirely when running standalone.
+	it('ignores hash and uses storage when standalone', () => {
+		const stored = { ...DEFAULT_SETTINGS, bpm: 90 };
+		saveSettings(stored, storage as unknown as Storage);
+		const shared = { ...DEFAULT_SETTINGS, bpm: 200, seed: 777 };
+		const hash = '#s=' + encodeShare(shared);
+		const loaded = loadSettings({
+			storage: storage as unknown as Storage,
+			hash,
+			standalone: true
+		});
+		expect(loaded).toEqual(stored);
+	});
 });
