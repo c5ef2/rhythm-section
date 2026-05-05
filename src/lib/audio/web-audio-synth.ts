@@ -72,23 +72,36 @@ export class WebAudioSynth implements Synth {
 
 	/**
 	 * Bluetooth audio devices power-save their codec between packets:
-	 * when the audio stream goes silent for more than a few tens of
-	 * milliseconds, the receiver buffers / sleeps, and the next event
-	 * gets clipped or dropped on its way back through. The fix on the
-	 * sender side is to never let the stream go fully silent — keep an
-	 * inaudible signal flowing into the destination so the codec stays
-	 * awake.
+	 * when the audio stream falls below the codec's silence threshold
+	 * (typically around -50 dB) for more than a few tens of milliseconds
+	 * the receiver buffers / sleeps, and the next event gets clipped or
+	 * dropped during wake-up. We never let the stream go silent.
 	 *
-	 * A `ConstantSourceNode` outputs a steady DC value of 1.0; we run it
-	 * through a -80 dB gain node (≈0.0001) to make it inaudible while
-	 * still being non-zero. CPU cost is rounding error.
+	 * Two details that trip up the obvious "constant DC offset" version:
+	 *
+	 * 1. **Codecs apply a DC blocker.** SBC / AAC / aptX all run a high-
+	 *    pass filter (~10-20 Hz cut-off) on the line-in, so a pure DC
+	 *    offset gets stripped to zero before the codec ever sees it.
+	 *    Use a low-frequency *sine* — the signal varies, so the high-
+	 *    pass passes it.
+	 * 2. **Codec silence thresholds are above -80 dB.** Most are around
+	 *    -50 dB. Push the gain up to roughly that level.
+	 *
+	 * 30 Hz at -55 dB is below most playback equipment's reproducible
+	 * range and inaudible on phone speakers / earbuds, but every BT
+	 * codec sees it as real audio and stays awake.
 	 */
 	private startKeepAlive(): void {
-		const src = new ConstantSourceNode(this.ctx, { offset: 1 });
-		const gain = new GainNode(this.ctx, { gain: 0.0001 });
-		src.connect(gain).connect(this.ctx.destination);
-		src.start();
-		this.keepAlive = src;
+		const KEEPALIVE_FREQ_HZ = 30;
+		const KEEPALIVE_GAIN = 0.0018; // ≈ -55 dB
+		const osc = new OscillatorNode(this.ctx, {
+			type: 'sine',
+			frequency: KEEPALIVE_FREQ_HZ
+		});
+		const gain = new GainNode(this.ctx, { gain: KEEPALIVE_GAIN });
+		osc.connect(gain).connect(this.ctx.destination);
+		osc.start();
+		this.keepAlive = osc;
 	}
 
 	playClick(time: number, emphasis: 'downbeat' | 'onbeat' | 'subbeat'): void {
