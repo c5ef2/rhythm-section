@@ -43,23 +43,6 @@ export function preloadAudio(): void {
 	void player.preload();
 }
 
-function currentInputs() {
-	const s = appState.settings;
-	return {
-		events: appState.rhythm.events,
-		bars: s.bars,
-		bpm: s.bpm,
-		metronome: s.metronome,
-		rhythmAudio: s.rhythmAudio,
-		rhythmInstrument: s.rhythmInstrument,
-		allowedLengths: s.allowedLengths,
-		snareOnBackbeats: s.snareOnBackbeats,
-		hihatSubdivision: s.hihatSubdivision,
-		countInBars: s.countIn ? 1 : 0,
-		loop: true
-	};
-}
-
 export async function togglePlay(): Promise<void> {
 	if (appState.isPlaying) stop();
 	else await start();
@@ -67,7 +50,7 @@ export async function togglePlay(): Promise<void> {
 
 export async function start(): Promise<void> {
 	if (!player) return;
-	await player.run(currentInputs());
+	await player.run(appState.playbackInputs);
 	appState.isPlaying = true;
 }
 
@@ -78,7 +61,7 @@ export function stop(): void {
 
 export async function restartIfPlaying(): Promise<void> {
 	if (!appState.isPlaying || !player) return;
-	await player.run(currentInputs());
+	await player.run(appState.playbackInputs);
 }
 
 export function regenerate(): void {

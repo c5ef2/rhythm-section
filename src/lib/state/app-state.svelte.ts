@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { SoundFontStatus } from '../audio/player';
+import type { PlayInputs, SoundFontStatus } from '../audio/player';
 import { generateRhythm, type GeneratedRhythm } from '../rhythm/generator';
 import { DEFAULT_SETTINGS, loadSettings } from './settings';
 import type { Settings } from './settings';
@@ -35,6 +35,33 @@ class AppState {
 			seed: this.settings.seed
 		})
 	);
+
+	/**
+	 * The exact bundle the Player needs to start a cycle. `$derived.by` reads
+	 * every nested field automatically, so the page's restart effect just
+	 * watches this getter — adding a playback-affecting setting is then a
+	 * one-line change here, not a copy-paste into a void-list elsewhere.
+	 *
+	 * `seed` is intentionally excluded from this snapshot: it changes the
+	 * generated rhythm (which lives in `events`) but doesn't itself affect
+	 * playback shape.
+	 */
+	playbackInputs: PlayInputs = $derived.by(() => {
+		const s = this.settings;
+		return {
+			events: this.rhythm.events,
+			bars: s.bars,
+			bpm: s.bpm,
+			metronome: s.metronome,
+			rhythmAudio: s.rhythmAudio,
+			rhythmInstrument: s.rhythmInstrument,
+			allowedLengths: s.allowedLengths,
+			snareOnBackbeats: s.snareOnBackbeats,
+			hihatSubdivision: s.hihatSubdivision,
+			countInBars: s.countIn ? 1 : 0,
+			loop: true
+		};
+	});
 }
 
 export const appState = new AppState();

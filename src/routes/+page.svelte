@@ -79,21 +79,12 @@
 		untrack(actions.normaliseBpm);
 	});
 
-	// Any change to playback-affecting state restarts the player while running.
+	// Any change to a playback-affecting field restarts the player while it's
+	// running. The dependency list lives on `appState.playbackInputs` (a
+	// $derived that reads every relevant setting), so adding a new playback
+	// field is a one-line edit there rather than another `void` line here.
 	$effect(() => {
-		const s = appState.settings;
-		void s.bpm;
-		void s.bars;
-		void s.metronome.enabled;
-		void s.metronome.division;
-		void s.metronome.emphasizeFirstBeat;
-		void s.metronome.countedBeats;
-		void s.countIn;
-		void s.rhythmAudio;
-		void s.rhythmInstrument;
-		void s.snareOnBackbeats;
-		void s.hihatSubdivision;
-		void appState.rhythm.events;
+		void appState.playbackInputs;
 		untrack(() => {
 			actions.restartIfPlaying();
 		});

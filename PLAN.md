@@ -237,7 +237,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 
 ### 3.10 State, persistence, share (`src/lib/state/`)
 
-- **`appState`** is a class with `$state` fields exported as a module singleton. One source of truth: `settings`, `isPlaying`, `activeIndex`, `soundFontStatus`. `rhythm` is `$derived` from settings (so any setting change instantly produces the new rhythm).
+- **`appState`** is a class with `$state` fields exported as a module singleton. One source of truth: `settings`, `isPlaying`, `activeIndex`, `soundFontStatus`. `rhythm` is `$derived` from settings (so any setting change instantly produces the new rhythm). `playbackInputs` is also `$derived` and is the exact bundle the Player needs to start a cycle — the page's restart effect just watches that single getter, so adding a new playback-affecting setting is a one-line edit on `playbackInputs` rather than a copy-paste into a void-list on the page.
 - **Every user intent** is a named function in `actions.svelte.ts`. Components only read `appState` and call actions. The `Player` singleton is owned by the actions module.
 - **`Player`** owns `AudioContext` + `Synth` + `Scheduler` + `WakeLock` + the soundfont preload promise. Stateless w.r.t. settings: `run(inputs)` always tears down any existing scheduler and starts fresh.
 - **Settings persistence**: `localStorage[rhythm-section:v1]` holds the JSON-serialised `Settings` object.
