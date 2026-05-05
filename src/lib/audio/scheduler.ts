@@ -4,10 +4,10 @@ const LOOKAHEAD_MS = 25;
 /**
  * Minimum scheduling-look-ahead window. The actual look-ahead grows with
  * `AudioContext.outputLatency` so Bluetooth output devices (which add
- * 150–300 ms of latency) still receive each `noteOn` in time to render — at
- * the default 100 ms a BT-routed event is effectively in the past for the
- * output buffer and gets clipped or dropped, which surfaces to the user as
- * "notes are barely audible / cut short over Bluetooth".
+ * 150–300 ms of latency) still receive each scheduled audio event in time
+ * to render — at the default 100 ms a BT-routed event is effectively in
+ * the past for the output buffer and gets clipped or dropped, which
+ * surfaces to the user as "notes are barely audible / cut short over BT".
  */
 const MIN_SCHEDULE_AHEAD_SEC = 0.1;
 const MIN_START_PREROLL_SEC = 0.05;
@@ -52,14 +52,6 @@ export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> 
 	onHighlight: HighlightListener;
 	loop?: boolean;
 	onComplete?: () => void;
-	/**
-	 * Floor for the cycle's start time. Used by the Player when restarting the
-	 * scheduler (e.g. after regenerate) to make sure the new cycle begins after
-	 * the look-ahead window of the previous scheduler has fully elapsed —
-	 * otherwise the spessasynth worklet's pre-queued `noteOn` events for the
-	 * old rhythm bleed audibly into the new highlights.
-	 */
-	startFloor?: number;
 }
 
 interface HighlightMark {
@@ -84,13 +76,6 @@ export class Scheduler {
 	 * on where the last scheduled event happened to be.
 	 */
 	private cycleEndTime = 0;
-	/**
-	 * Latest audio-context time we've actually committed to the synth (i.e.
-	 * passed to `playClick`/`playKick`/.../`playBass`, including bass sustain).
-	 * The Player reads this after stop() so the next cycle can begin past the
-	 * tail of the previous one without overlapping audio.
-	 */
-	private dispatchedHorizon = 0;
 
 	constructor(config: SchedulerConfig) {
 		this.ctx = config.ctx;
@@ -100,8 +85,7 @@ export class Scheduler {
 	start(): void {
 		if (this.running) return;
 		this.running = true;
-		const earliest = this.ctx.currentTime + this.startPreroll();
-		const startTime = Math.max(earliest, this.cfg.startFloor ?? 0);
+		const startTime = this.ctx.currentTime + this.startPreroll();
 		this.prime(startTime, this.cfg.countInBars);
 		this.tick();
 		this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
@@ -121,16 +105,6 @@ export class Scheduler {
 
 	private scheduleAheadSec(): number {
 		return Math.max(MIN_SCHEDULE_AHEAD_SEC, this.outputLatency() * LATENCY_SAFETY_FACTOR);
-	}
-
-	/**
-	 * Time of the last audio event we sent to the synth (kick/snare/hihat/bass
-	 * including its sustain, plus metronome clicks). `0` when the scheduler
-	 * never dispatched anything. The Player uses this to start the next cycle
-	 * past the previous scheduler's tail.
-	 */
-	get tailTime(): number {
-		return this.dispatchedHorizon;
 	}
 
 	stop(): void {
@@ -209,32 +183,23 @@ export class Scheduler {
 		switch (e.type) {
 			case 'metronome':
 				synth.playClick(e.time, e.emphasis);
-				this.bumpHorizon(e.time);
 				break;
 			case 'kick':
 				synth.playKick(e.time);
-				this.bumpHorizon(e.time);
 				break;
 			case 'snare':
 				synth.playSnare(e.time);
-				this.bumpHorizon(e.time);
 				break;
 			case 'hihat':
 				synth.playHihat(e.time);
-				this.bumpHorizon(e.time);
 				break;
 			case 'bass':
 				synth.playBass(e.time, e.durationSec);
-				this.bumpHorizon(e.time + e.durationSec);
 				break;
 			case 'highlight':
 				// Handled by the rAF loop reading ctx.currentTime directly.
 				break;
 		}
-	}
-
-	private bumpHorizon(t: number): void {
-		if (t > this.dispatchedHorizon) this.dispatchedHorizon = t;
 	}
 
 	private highlightFrame(): void {

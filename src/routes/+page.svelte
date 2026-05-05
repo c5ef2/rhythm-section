@@ -37,19 +37,6 @@
 		reloadOnNewServiceWorker();
 	});
 
-	// Start fetching the bundled SoundFont the moment the app mounts, so the
-	// synth is ready and Play responds instantly instead of going through a
-	// load on first press.
-	$effect(() => {
-		actions.preloadAudio();
-	});
-
-	// `idle` means "preload was skipped (PWA mode) and the user hasn't clicked
-	// Play yet" — the click handler will lazy-load the SoundFont. So idle is
-	// NOT a loading state from the user's POV; only `loading` is.
-	const playLoading = $derived(appState.soundFontStatus === 'loading');
-	const playError = $derived(appState.soundFontStatus === 'error');
-	const playDisabled = $derived(playLoading || playError);
 	// In a regular browser tab the user can always copy the URL from the
 	// address bar (we live-sync it), so the Share button only earns its
 	// keep when there's a native share dialog to open. In a PWA install
@@ -154,16 +141,8 @@
 				class="primary play"
 				type="button"
 				onclick={actions.togglePlay}
-				disabled={playDisabled}
-				aria-busy={playLoading}
-				title={playError ? 'Audio unavailable — connect to the network and reload' : undefined}
 			>
-				{#if playError}
-					<span>Audio unavailable</span>
-				{:else if playLoading}
-					<span class="spinner" aria-hidden="true"></span>
-					<span>Loading…</span>
-				{:else if appState.isPlaying}
+				{#if appState.isPlaying}
 					<svg
 						viewBox="0 0 24 24"
 						width="18"
@@ -452,20 +431,6 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
-	}
-	.spinner {
-		display: inline-block;
-		width: 1.05rem;
-		height: 1.05rem;
-		border: 2px solid currentColor;
-		border-top-color: transparent;
-		border-radius: 50%;
-		animation: spinner-rot 0.7s linear infinite;
-	}
-	@keyframes spinner-rot {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 	.secondary {
 		background: var(--panel-2);

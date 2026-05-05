@@ -132,62 +132,6 @@ describe('Scheduler', () => {
 		expect(kicks.map((c) => c.time)).toEqual([0.05, 0.55, 1.05, 1.55]);
 	});
 
-	it('tailTime tracks the latest dispatched event including bass sustain', async () => {
-		const ctx = new FakeAudioContext();
-		const synth = recordingSynth();
-		const sched = new Scheduler({
-			ctx: ctx as unknown as AudioContext,
-			synth,
-			events: RHYTHM_4Q,
-			bars: 1,
-			bpm: 120,
-			metronome: QUIET_METRONOME,
-			rhythmAudio: true,
-			// Bass mode means each note sustains for its full duration; the last
-			// note's tail extends past the cycle end, which is exactly the case
-			// the Player needs to know about for restart-without-overlap.
-			rhythmInstrument: 'bass',
-			snareOnBackbeats: false,
-			hihatSubdivision: 'off',
-			loop: false,
-			onHighlight: () => {}
-		});
-		sched.start();
-		await advance(ctx, 2.5);
-
-		// Last bass: noteOn at 1.55, durationSec = 0.5 (one quarter at 120 BPM)
-		// → tailTime should be 2.05 s.
-		expect(sched.tailTime).toBeCloseTo(2.05, 6);
-	});
-
-	it('start() respects startFloor', async () => {
-		const ctx = new FakeAudioContext();
-		const synth = recordingSynth();
-		const sched = new Scheduler({
-			ctx: ctx as unknown as AudioContext,
-			synth,
-			events: RHYTHM_4Q,
-			bars: 1,
-			bpm: 120,
-			metronome: QUIET_METRONOME,
-			rhythmAudio: true,
-			rhythmInstrument: 'drum',
-			snareOnBackbeats: false,
-			hihatSubdivision: 'off',
-			// Pretend the previous scheduler had committed audio up to
-			// ctx.currentTime + 0.3 s. The new schedule must start past that,
-			// not at the default currentTime + 0.05.
-			startFloor: 0.3,
-			loop: false,
-			onHighlight: () => {}
-		});
-		sched.start();
-		// Advance past the floor so the first kick enters the look-ahead window.
-		await advance(ctx, 0.4);
-		const firstKick = synth.calls.find((c) => c.method === 'playKick');
-		expect(firstKick?.time).toBeCloseTo(0.3, 6);
-	});
-
 	it('stop() halts dispatch and clears the highlight', async () => {
 		const ctx = new FakeAudioContext();
 		const synth = recordingSynth();

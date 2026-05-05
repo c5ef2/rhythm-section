@@ -18,30 +18,9 @@ const player = browser
 			onStopped: () => {
 				appState.isPlaying = false;
 				appState.activeIndex = null;
-			},
-			onSoundFontStatus: (status) => (appState.soundFontStatus = status)
+			}
 		})
 	: null;
-
-let preloadStarted = false;
-
-/**
- * Eagerly create the AudioContext and start fetching the bundled SoundFont
- * so the synth is ready by the time the user taps Play. Called once on app
- * mount; subsequent calls are a no-op.
- *
- * Skipped in standalone PWA mode: iOS suspends the AudioContext / its
- * AudioWorklet across home-screen launches, leaving the synth in a state
- * where `noteOn` is silently dropped. Creating it inside the first Play
- * click instead avoids the corpse and the user just sees the normal
- * "Loading…" spinner on the very first press.
- */
-export function preloadAudio(): void {
-	if (!player || preloadStarted) return;
-	if (environment.isStandalone) return;
-	preloadStarted = true;
-	void player.preload();
-}
 
 export async function togglePlay(): Promise<void> {
 	if (appState.isPlaying) stop();

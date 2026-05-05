@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { PlayInputs, SoundFontStatus } from '../audio/player';
+import type { PlayInputs } from '../audio/player';
 import { generateRhythm, type GeneratedRhythm } from '../rhythm/generator';
 import { DEFAULT_SETTINGS, loadSettings } from './settings';
 import type { Settings } from './settings';
@@ -18,9 +18,6 @@ class AppState {
 
 	/** Currently-highlighted rhythm event index, or null when stopped. */
 	activeIndex: number | null = $state(null);
-
-	/** Where the bundled SoundFont is in its lifecycle. */
-	soundFontStatus: SoundFontStatus = $state('idle');
 
 	/**
 	 * Deterministic regeneration: `rhythm` is derived purely from settings, so
