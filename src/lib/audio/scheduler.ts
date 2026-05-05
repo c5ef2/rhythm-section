@@ -1,7 +1,22 @@
 import { buildEventList, type AudioEvent, type BuildEventListInput } from './events';
 
 const LOOKAHEAD_MS = 25;
-const SCHEDULE_AHEAD_SEC = 0.1;
+/**
+ * Minimum scheduling-look-ahead window. The actual look-ahead grows with
+ * `AudioContext.outputLatency` so Bluetooth output devices (which add
+ * 150–300 ms of latency) still receive each `noteOn` in time to render — at
+ * the default 100 ms a BT-routed event is effectively in the past for the
+ * output buffer and gets clipped or dropped, which surfaces to the user as
+ * "notes are barely audible / cut short over Bluetooth".
+ */
+const MIN_SCHEDULE_AHEAD_SEC = 0.1;
+const MIN_START_PREROLL_SEC = 0.05;
+/**
+ * How many output-latency windows to absorb on top of the minimums. A factor
+ * of 2 means we always lead the output buffer by at least one full latency
+ * cycle plus a safety margin.
+ */
+const LATENCY_SAFETY_FACTOR = 2;
 
 type HighlightListener = (rhythmEventIndex: number | null) => void;
 
@@ -85,12 +100,27 @@ export class Scheduler {
 	start(): void {
 		if (this.running) return;
 		this.running = true;
-		const earliest = this.ctx.currentTime + 0.05;
+		const earliest = this.ctx.currentTime + this.startPreroll();
 		const startTime = Math.max(earliest, this.cfg.startFloor ?? 0);
 		this.prime(startTime, this.cfg.countInBars);
 		this.tick();
 		this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
 		this.rafHandle = requestAnimationFrame(() => this.highlightFrame());
+	}
+
+	private outputLatency(): number {
+		// Browsers that don't expose outputLatency report 0 / undefined; treat
+		// those as "low latency" — typical for built-in speakers anyway.
+		const reported = (this.ctx as { outputLatency?: number }).outputLatency;
+		return typeof reported === 'number' && reported > 0 ? reported : 0;
+	}
+
+	private startPreroll(): number {
+		return Math.max(MIN_START_PREROLL_SEC, this.outputLatency() * LATENCY_SAFETY_FACTOR);
+	}
+
+	private scheduleAheadSec(): number {
+		return Math.max(MIN_SCHEDULE_AHEAD_SEC, this.outputLatency() * LATENCY_SAFETY_FACTOR);
 	}
 
 	/**
@@ -145,7 +175,7 @@ export class Scheduler {
 	}
 
 	private tick(): void {
-		const horizon = this.ctx.currentTime + SCHEDULE_AHEAD_SEC;
+		const horizon = this.ctx.currentTime + this.scheduleAheadSec();
 		while (this.nextEventIdx < this.events.length) {
 			const e = this.events[this.nextEventIdx];
 			if (e.time > horizon) break;

@@ -22,4 +22,15 @@ describe('pickRestartTime', () => {
 		// hearing the old rhythm's bass under the new one.
 		expect(pickRestartTime(10, 12.5)).toBeCloseTo(12.5 + RESTART_GAP_SEC, 6);
 	});
+
+	it('honours a longer preroll for high-latency outputs (Bluetooth)', () => {
+		// Bluetooth output reports ~0.2 s outputLatency → preroll = 0.4 s.
+		// A regular cycle restart should land at currentTime + 0.4, not + 0.05.
+		expect(pickRestartTime(10, 0, 0.4)).toBeCloseTo(10.4, 6);
+	});
+
+	it('still honours the previous tail when preroll is smaller', () => {
+		// Even with a bumped preroll, an old bass tail past the preroll wins.
+		expect(pickRestartTime(10, 12.5, 0.4)).toBeCloseTo(12.5 + RESTART_GAP_SEC, 6);
+	});
 });

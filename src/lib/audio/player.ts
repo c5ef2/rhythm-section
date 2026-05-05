@@ -130,6 +130,11 @@ export class Player {
 		// Cut any sustaining note (e.g. a long bass) so its tail doesn't leak
 		// under the next cycle.
 		if (isRestart) synth.stopAll();
+		// Bluetooth output adds 150–300 ms of latency; lead the output buffer
+		// by twice that so noteOn events don't land in the past. Built-in
+		// speakers report ~10 ms or 0 here so the floor stays at 0.05.
+		const outputLatency = (ctx as { outputLatency?: number }).outputLatency ?? 0;
+		const preroll = Math.max(0.05, outputLatency * 2);
 		this.scheduler = new Scheduler({
 			ctx,
 			synth,
@@ -144,7 +149,7 @@ export class Player {
 			hihatSubdivision: inputs.hihatSubdivision,
 			countInBars: inputs.countInBars,
 			loop: inputs.loop,
-			startFloor: pickRestartTime(ctx.currentTime, prevTail),
+			startFloor: pickRestartTime(ctx.currentTime, prevTail, preroll),
 			onHighlight: (i) => this.callbacks.onActiveNote(i),
 			onComplete: () => {
 				this.wakeLock.release();

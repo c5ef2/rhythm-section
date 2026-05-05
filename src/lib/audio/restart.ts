@@ -9,12 +9,20 @@
  * The fix is to schedule the next cycle past the previous scheduler's tail.
  * `previousTail` is the latest audio-context time the previous scheduler
  * dispatched (including bass sustain). A small extra gap absorbs the
- * worklet's own scheduling jitter.
+ * worklet's own scheduling jitter. `preroll` lets the caller demand a
+ * minimum cushion in front of `currentTime` — typically just enough to land
+ * past the look-ahead horizon, but bumped higher when the output device is
+ * Bluetooth (high `AudioContext.outputLatency`).
  */
 export const RESTART_GAP_SEC = 0.005;
+const DEFAULT_PREROLL_SEC = 0.05;
 
-export function pickRestartTime(currentTime: number, previousTail: number): number {
-	const earliest = currentTime + 0.05;
+export function pickRestartTime(
+	currentTime: number,
+	previousTail: number,
+	preroll: number = DEFAULT_PREROLL_SEC
+): number {
+	const earliest = currentTime + Math.max(preroll, DEFAULT_PREROLL_SEC);
 	const safeAfterTail = previousTail + RESTART_GAP_SEC;
 	return Math.max(earliest, safeAfterTail);
 }
