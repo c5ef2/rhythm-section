@@ -284,7 +284,10 @@ function toStaveNote(e: RhythmEvent): StaveNote {
 		keys: ['f/4'],
 		duration: e.isRest ? duration + 'r' : duration
 	});
-	if (!e.isRest && isDotted(e.length)) Dot.buildAndAttach([note], { all: true });
+	// Dotted rests need the augmentation dot too — without it, an eighth rest
+	// and a dotted-eighth rest look identical and the reader can't tell which
+	// one to count. VexFlow attaches the dot to the rest glyph when asked.
+	if (isDotted(e.length)) Dot.buildAndAttach([note], { all: true });
 	return note;
 }
 
