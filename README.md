@@ -41,7 +41,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 
 - **SvelteKit 2 + Svelte 5 runes**, TypeScript end to end.
 - **VexFlow 5** for staff notation. The only runtime dependency.
-- **Native Web Audio** for sound — no SoundFont, no synth library, no audio worklet. Six voices (kick, snare, closed hihat, woodblock, claves, bass) are synthesized at hit time from `OscillatorNode` + `AudioBufferSourceNode` + `GainNode` envelopes (see §3.7 / §3.9).
+- **Native Web Audio** for sound — no SoundFont, no synth library, no audio worklet. Six pre-baked drum / bass samples (rendered once from a GM SoundFont via `scripts/render-samples.mjs` and shipped as ~250 KB of WAV) are decoded into `AudioBuffer`s on first Play and played through `AudioBufferSourceNode`s (see §3.7 / §3.9).
 - **Vite** dev/preview on port **8473**, binding to `0.0.0.0` so the devcontainer port mapping reaches the browser.
 - **`@sveltejs/adapter-static`** with `fallback: 'index.html'`. SSR + prerender are **disabled** for the page (`src/routes/+page.ts`) — it renders once client-side so the first paint already reflects localStorage. No flash of default values.
 - **`paths.base` is read from `BASE_PATH` env at build time** so the build also works under a GitHub Pages project subpath (`/<repo>/`).
@@ -71,11 +71,13 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ├── .devcontainer/                       containerised dev env
 ├── .github/workflows/deploy.yml         build & publish to GitHub Pages
 ├── scripts/
-│   └── generate-icons.mjs               favicon.svg → 192/512/maskable + apple-touch
+│   ├── generate-icons.mjs               favicon.svg → 192/512/maskable + apple-touch
+│   └── render-samples.mjs               one-off SF2 → static/samples/*.wav (manual)
 ├── static/
 │   ├── manifest.webmanifest             PWA manifest
 │   ├── icon-192.png / icon-512.png / icon-maskable.png / apple-touch-icon.png
 │   ├── favicon.ico                      legacy
+│   ├── samples/                         baked drum + bass WAVs (~250 KB total)
 │   └── robots.txt
 ├── src/
 │   ├── app.html                         viewport, theme-color, manifest link, …
@@ -106,7 +108,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 │       │   ├── scheduler.ts             Chris Wilson look-ahead + rAF highlight + seamless loop;
 │       │   │                            also exports the Synth interface
 │       │   ├── scheduler.test.ts
-│       │   ├── web-audio-synth.ts       6-voice native Web Audio synth (the only Synth impl)
+│       │   ├── web-audio-synth.ts       6-voice sample-based synth (loads static/samples/*.wav)
 │       │   ├── ios-audio.ts             configureIosPlayback (audioSession) + primeIosPlayback (silent <audio>)
 │       │   ├── wake-lock.ts             Screen Wake Lock API wrapper
 │       │   ├── player.ts                Player owns ctx, synth, scheduler, wake lock
@@ -223,17 +225,28 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 
 #### Synth (`src/lib/audio/web-audio-synth.ts`)
 
-Six voices, all synthesized at hit time from raw Web Audio primitives:
+Six voices, all played from pre-baked WAV samples in `static/samples/`:
 
-| Voice | How |
-|---|---|
-| **Click** (woodblock / claves) | Triangle oscillator, 1700 Hz (downbeat) or 2400 Hz (on-beat / sub-beat), short amplitude envelope (40–60 ms decay). |
-| **Kick** | Sine oscillator with an exponential pitch sweep 150 → 40 Hz over 60 ms, fast-attack / 400 ms-decay amp envelope. |
-| **Snare** | Triangle body tone at 200 Hz layered with band-passed white noise (1.8 kHz, Q 0.9), both with ~120–180 ms decay. |
-| **Closed hihat** | High-passed white noise (≥7 kHz), 50 ms decay. |
-| **Bass** | Sawtooth at 82.41 Hz through a 700 Hz lowpass with `durationSec`-aware attack / sustain / release envelope. |
+| Voice | Source MIDI note | Trim |
+|---|---|---|
+| **Kick** | drum kit, note 36 | ~140 ms |
+| **Snare** | drum kit, note 38 | ~600 ms |
+| **Closed hihat** | drum kit, note 42 | ~120 ms |
+| **Woodblock** (on-beat click) | drum kit, note 76 | ~90 ms |
+| **Claves** (downbeat click) | drum kit, note 75 | ~200 ms |
+| **Bass** | fretless bass program 35, note 33 (A1) | 1.5 s |
 
-Why not a SoundFont synth: the previous spessasynth-backed implementation had no public API to cancel a future-scheduled `noteOn`, which made `regenerate` racy (queued events for the old rhythm fired on top of the new highlights). Native `AudioBufferSourceNode.stop()` / `OscillatorNode.stop()` aborts even unstarted sources, so `WebAudioSynth.stopAll()` actually drains the queue. Bundle dropped by ~1 MB at the same time (no SoundFont, no worklet).
+Each sample is fetched + decoded into an `AudioBuffer` once on first Play, then every hit creates a fresh `AudioBufferSourceNode` pointing at the right buffer, gated by a per-hit `GainNode`. The bass adds a duration-aware release envelope on its `GainNode` so notes can end mid-buffer without a click. Per-voice gain trims (`VOICE_GAIN`) restore the kit's relative balance after `audioToWav`'s peak normalisation flattened every sample to 0 dBFS.
+
+The samples were rendered offline via `scripts/render-samples.mjs` (see §4) — we don't ship spessasynth or a SoundFont at runtime.
+
+Why not synthesised oscillators: an oscillator-only kit sounds thin even with envelopes layered on top. Real samples were one round-trip away.
+
+Why not a runtime SoundFont synth: the previous spessasynth-backed implementation had no public API to cancel a future-scheduled `noteOn`, which made `regenerate` racy (queued events for the old rhythm fired on top of the new highlights). Native `AudioBufferSourceNode.stop()` aborts even unstarted sources, so `WebAudioSynth.stopAll()` actually drains the queue.
+
+#### Bluetooth keep-alive
+
+BT audio devices powerdown their codec a few tens of milliseconds after the audio stream goes silent, so the next short hit lands during the codec wake-up and is clipped or dropped. `WebAudioSynth` runs a `ConstantSourceNode` through a -80 dB `GainNode` into the destination for the AudioContext's lifetime — inaudible, negligible CPU, but it keeps the BT codec awake so every hit reaches the speakers cleanly.
 
 #### Scheduler (`src/lib/audio/scheduler.ts`)
 
@@ -330,6 +343,24 @@ Inputs `src/lib/assets/favicon.svg`. Outputs:
 - `static/apple-touch-icon.png` (brand-blue background, 180×180, iOS home-screen)
 
 Uses `@resvg/resvg-js`, pure WASM. PNGs are committed.
+
+### `scripts/render-samples.mjs` (manual)
+
+One-off renderer: drives `spessasynth_core` in offline mode to bake the six voices we play (kick, snare, closed hihat, woodblock, claves, bass) from a SoundFont 2 file into mono WAVs in `static/samples/`. The runtime synth (`src/lib/audio/web-audio-synth.ts`) fetches and decodes those WAVs on first Play.
+
+`spessasynth_core` is **not** a project dependency — it's only needed when re-rendering. Workflow:
+
+```sh
+# place the SF2 here (recoverable from git history at the commit that
+# deleted static/rhythm.sf3)
+cp /path/to/rhythm.sf3 scripts/.tmp-rhythm.sf3
+
+npm install --no-save spessasynth_core
+node scripts/render-samples.mjs
+# `--no-save` keeps the dep out of package.json / package-lock.json
+```
+
+The committed WAVs are mono 44.1 kHz, peak-normalised, tail-trimmed at -60 dB; per-voice loudness is restored via `VOICE_GAIN` in `web-audio-synth.ts`. Total weight ~250 KB.
 
 ---
 

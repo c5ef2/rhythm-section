@@ -1,124 +1,152 @@
+import { base } from '$app/paths';
 import type { Synth } from './scheduler';
 
 /**
- * Lightweight synth that produces all six voices the rhythm app needs
- * (kick, snare, closed hihat, woodblock, claves, bass) directly from
- * raw Web Audio primitives — no SoundFont, no worklet, no library.
+ * Sample-based synth. Six pre-rendered drum / bass voices are fetched and
+ * decoded once at startup; every hit then becomes a fresh
+ * `AudioBufferSourceNode` pointing at the right buffer, gated by a
+ * `GainNode`.
  *
- * Why not spessasynth: every `noteOn(time)` it accepts is queued inside
- * an opaque worklet that we can't cancel. With AudioBufferSourceNode and
+ * Why not spessasynth: every `noteOn(time)` it accepted was queued inside
+ * an opaque worklet that we couldn't cancel. With AudioBufferSourceNode and
  * OscillatorNode we hold the references ourselves, and `stopAll()`
- * actually aborts every event we've scheduled into the future — that's
- * what makes regenerate, restart, and Bluetooth latency tractable.
+ * actually aborts every event we've scheduled into the future.
  *
- * Each voice synthesizes its sound on demand: a few oscillators or a
- * noise buffer through a filter, with an amplitude envelope on a
- * GainNode. Per-hit allocation is fine — a 4-bar busy rhythm is on the
- * order of 100 hits / second, which Web Audio handles comfortably.
+ * Why not synthesized voices: oscillator-only kicks / snares / hats sound
+ * thin compared to even a plain GM SoundFont. The samples below were
+ * baked once from the bundled SF2 (`scripts/render-samples.mjs`) so we
+ * keep that quality without shipping the SF2 + spessasynth at runtime.
  */
-export class WebAudioSynth implements Synth {
-	private active = new Set<AudioScheduledSourceNode>();
-	private noiseBuffer: AudioBuffer;
 
-	constructor(private readonly ctx: AudioContext) {
-		this.noiseBuffer = createWhiteNoiseBuffer(ctx);
+type Voice = 'kick' | 'snare' | 'hihat' | 'woodblock' | 'claves' | 'bass';
+
+const VOICE_FILES: Record<Voice, string> = {
+	kick: 'samples/kick.wav',
+	snare: 'samples/snare.wav',
+	hihat: 'samples/hihat.wav',
+	woodblock: 'samples/woodblock.wav',
+	claves: 'samples/claves.wav',
+	bass: 'samples/bass.wav'
+};
+
+/**
+ * Per-voice gain trim. `audioToWav({ normalizeAudio: true })` peak-
+ * normalises every sample to 0 dBFS, so without trims the kit would be
+ * uniformly loud — these match the original spessasynth velocities the
+ * old synth used (115/105/75 etc.) so the mix balance stays close to
+ * what we had.
+ */
+const VOICE_GAIN: Record<Voice, number> = {
+	kick: 0.9,
+	snare: 0.85,
+	hihat: 0.5,
+	woodblock: 0.55,
+	claves: 0.7,
+	bass: 0.65
+};
+
+export async function loadVoiceBuffers(ctx: AudioContext): Promise<Record<Voice, AudioBuffer>> {
+	const entries = await Promise.all(
+		(Object.keys(VOICE_FILES) as Voice[]).map(async (name) => {
+			const url = `${base}/${VOICE_FILES[name]}`;
+			const res = await fetch(url);
+			if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+			const data = await res.arrayBuffer();
+			const buffer = await ctx.decodeAudioData(data);
+			return [name, buffer] as const;
+		})
+	);
+	return Object.fromEntries(entries) as Record<Voice, AudioBuffer>;
+}
+
+export class WebAudioSynth implements Synth {
+	private active = new Set<AudioBufferSourceNode>();
+	private keepAlive: AudioScheduledSourceNode | null = null;
+
+	constructor(
+		private readonly ctx: AudioContext,
+		private readonly buffers: Record<Voice, AudioBuffer>
+	) {
+		this.startKeepAlive();
+	}
+
+	/**
+	 * Bluetooth audio devices power-save their codec between packets:
+	 * when the audio stream goes silent for more than a few tens of
+	 * milliseconds, the receiver buffers / sleeps, and the next event
+	 * gets clipped or dropped on its way back through. The fix on the
+	 * sender side is to never let the stream go fully silent — keep an
+	 * inaudible signal flowing into the destination so the codec stays
+	 * awake.
+	 *
+	 * A `ConstantSourceNode` outputs a steady DC value of 1.0; we run it
+	 * through a -80 dB gain node (≈0.0001) to make it inaudible while
+	 * still being non-zero. CPU cost is rounding error.
+	 */
+	private startKeepAlive(): void {
+		const src = new ConstantSourceNode(this.ctx, { offset: 1 });
+		const gain = new GainNode(this.ctx, { gain: 0.0001 });
+		src.connect(gain).connect(this.ctx.destination);
+		src.start();
+		this.keepAlive = src;
 	}
 
 	playClick(time: number, emphasis: 'downbeat' | 'onbeat' | 'subbeat'): void {
-		// Woodblock-ish click. Downbeat sits a bit lower with a longer
-		// body so it actually reads as the "1"; sub-beats are quieter and
-		// slightly shorter so they don't compete with the rhythm voices.
-		const freq = emphasis === 'downbeat' ? 1700 : emphasis === 'onbeat' ? 2400 : 2400;
-		const gain = emphasis === 'downbeat' ? 0.6 : emphasis === 'onbeat' ? 0.45 : 0.28;
-		const decay = emphasis === 'subbeat' ? 0.04 : 0.06;
-		this.tonalBlip(time, freq, gain, decay);
+		// Downbeat = claves (sharper, brighter). On / sub-beats = woodblock,
+		// with sub-beats quieter so they don't fight the rhythm voices.
+		const voice: Voice = emphasis === 'downbeat' ? 'claves' : 'woodblock';
+		const gain =
+			emphasis === 'downbeat' ? 1.0 : emphasis === 'onbeat' ? 0.85 : 0.55;
+		this.fire(voice, time, gain);
 	}
 
 	playKick(time: number): void {
-		// Short pitch sweep from 150 Hz down to 40 Hz with a fast amp
-		// envelope — classic 808-ish punch, dry enough to read on phone
-		// speakers and Bluetooth.
-		const osc = new OscillatorNode(this.ctx, { type: 'sine', frequency: 150 });
-		const env = new GainNode(this.ctx, { gain: 0 });
-		osc.frequency.setValueAtTime(150, time);
-		osc.frequency.exponentialRampToValueAtTime(40, time + 0.06);
-		env.gain.setValueAtTime(0, time);
-		env.gain.linearRampToValueAtTime(0.95, time + 0.005);
-		env.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
-		osc.connect(env).connect(this.ctx.destination);
-		this.scheduleSource(osc, time, 0.4);
+		this.fire('kick', time, 1.0);
 	}
 
 	playSnare(time: number): void {
-		// Snare = body tone (pitched ~200 Hz) + bandpassed noise. Two
-		// envelopes, both decay fast (~0.18 s) for a sharp backbeat.
-		const body = new OscillatorNode(this.ctx, { type: 'triangle', frequency: 200 });
-		const bodyEnv = new GainNode(this.ctx, { gain: 0 });
-		bodyEnv.gain.setValueAtTime(0, time);
-		bodyEnv.gain.linearRampToValueAtTime(0.4, time + 0.002);
-		bodyEnv.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
-		body.connect(bodyEnv).connect(this.ctx.destination);
-		this.scheduleSource(body, time, 0.12);
-
-		const noise = new AudioBufferSourceNode(this.ctx, { buffer: this.noiseBuffer });
-		const filter = new BiquadFilterNode(this.ctx, {
-			type: 'bandpass',
-			frequency: 1800,
-			Q: 0.9
-		});
-		const noiseEnv = new GainNode(this.ctx, { gain: 0 });
-		noiseEnv.gain.setValueAtTime(0, time);
-		noiseEnv.gain.linearRampToValueAtTime(0.55, time + 0.002);
-		noiseEnv.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
-		noise.connect(filter).connect(noiseEnv).connect(this.ctx.destination);
-		this.scheduleSource(noise, time, 0.18);
+		this.fire('snare', time, 1.0);
 	}
 
 	playHihat(time: number): void {
-		// Closed hat: highpass-filtered noise with a snappy ~50 ms decay.
-		const noise = new AudioBufferSourceNode(this.ctx, { buffer: this.noiseBuffer });
-		const filter = new BiquadFilterNode(this.ctx, { type: 'highpass', frequency: 7000 });
-		const env = new GainNode(this.ctx, { gain: 0 });
-		env.gain.setValueAtTime(0, time);
-		env.gain.linearRampToValueAtTime(0.35, time + 0.001);
-		env.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
-		noise.connect(filter).connect(env).connect(this.ctx.destination);
-		this.scheduleSource(noise, time, 0.05);
+		this.fire('hihat', time, 1.0);
 	}
 
 	playBass(time: number, durationSec: number): void {
-		// E2-ish fundamental (≈82 Hz on the bass guitar range) with a
-		// soft attack and an explicit release ramp at noteOff time so the
-		// note doesn't click off. The duration on the wire is sample-
-		// accurate; we just need to choose a release that fits cleanly
-		// inside even short notes.
-		const FUNDAMENTAL = 82.41;
-		const RELEASE = Math.min(0.08, durationSec * 0.5);
-		const osc = new OscillatorNode(this.ctx, { type: 'sawtooth', frequency: FUNDAMENTAL });
-		const filter = new BiquadFilterNode(this.ctx, {
-			type: 'lowpass',
-			frequency: 700,
-			Q: 0.7
-		});
+		// The baked bass sample is ~1.5 s. Hold it via the buffer's natural
+		// playback up to durationSec, then ramp the gain down over a small
+		// release window so the cutoff isn't a click. For notes longer than
+		// the buffer, AudioBufferSourceNode would simply end early — but at
+		// 40 BPM a whole note is 6 s, which would need looping. The SF2
+		// sample encodes a sustaining pluck; setting `loop = true` on a
+		// segment of it would risk a comb-filter buzz. Keep it unlooped
+		// for now and accept that very long bass notes will end with the
+		// buffer; this matches what spessasynth did effectively (the SF2
+		// sample loop point had the same release character).
+		const buffer = this.buffers.bass;
+		const src = new AudioBufferSourceNode(this.ctx, { buffer });
 		const env = new GainNode(this.ctx, { gain: 0 });
-		env.gain.setValueAtTime(0, time);
-		env.gain.linearRampToValueAtTime(0.5, time + 0.01);
-		env.gain.setValueAtTime(0.5, time + Math.max(0.01, durationSec - RELEASE));
-		env.gain.exponentialRampToValueAtTime(0.001, time + durationSec);
-		osc.connect(filter).connect(env).connect(this.ctx.destination);
-		this.scheduleSource(osc, time, durationSec + 0.02);
+		const peak = VOICE_GAIN.bass;
+		const RELEASE = Math.min(0.08, durationSec * 0.5);
+		const stopAt = time + Math.min(durationSec, buffer.duration);
+		env.gain.setValueAtTime(peak, time);
+		env.gain.setValueAtTime(peak, Math.max(time, stopAt - RELEASE));
+		env.gain.exponentialRampToValueAtTime(0.001, stopAt);
+		src.connect(env).connect(this.ctx.destination);
+		this.track(src);
+		src.start(time);
+		src.stop(stopAt + 0.02);
 	}
 
 	stopAll(): void {
 		// Calling .stop() on a source node aborts even start times that
 		// haven't been reached yet, so this drains both currently-sounding
 		// notes AND any future-scheduled ones the Player decided to abandon.
-		// That's the whole reason we left spessasynth.
 		for (const src of this.active) {
 			try {
 				src.stop();
 			} catch {
-				// stop() throws if the node was never started; ignore.
+				// Already stopped or not yet started — fine.
 			}
 		}
 		this.active.clear();
@@ -126,35 +154,28 @@ export class WebAudioSynth implements Synth {
 
 	destroy(): void {
 		this.stopAll();
+		try {
+			this.keepAlive?.stop();
+		} catch {
+			// already stopped — fine
+		}
+		this.keepAlive = null;
 	}
 
-	private tonalBlip(time: number, freq: number, peak: number, decaySec: number): void {
-		const osc = new OscillatorNode(this.ctx, { type: 'triangle', frequency: freq });
-		const env = new GainNode(this.ctx, { gain: 0 });
-		env.gain.setValueAtTime(0, time);
-		env.gain.linearRampToValueAtTime(peak, time + 0.002);
-		env.gain.exponentialRampToValueAtTime(0.001, time + decaySec);
-		osc.connect(env).connect(this.ctx.destination);
-		this.scheduleSource(osc, time, decaySec);
+	private fire(voice: Voice, time: number, gainFactor: number): void {
+		const buffer = this.buffers[voice];
+		const src = new AudioBufferSourceNode(this.ctx, { buffer });
+		const gain = new GainNode(this.ctx, { gain: VOICE_GAIN[voice] * gainFactor });
+		src.connect(gain).connect(this.ctx.destination);
+		this.track(src);
+		src.start(time);
+		src.stop(time + buffer.duration + 0.02);
 	}
 
-	private scheduleSource(src: AudioScheduledSourceNode, time: number, lifetimeSec: number): void {
+	private track(src: AudioBufferSourceNode): void {
 		this.active.add(src);
 		src.onended = () => {
 			this.active.delete(src);
 		};
-		src.start(time);
-		src.stop(time + lifetimeSec + 0.02);
 	}
-}
-
-function createWhiteNoiseBuffer(ctx: AudioContext): AudioBuffer {
-	// One second of white noise, mono. Re-used by every snare and hihat
-	// hit — each AudioBufferSourceNode is a cheap "view" onto the same
-	// buffer, so memory cost is fixed regardless of hit rate.
-	const length = ctx.sampleRate;
-	const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-	const data = buffer.getChannelData(0);
-	for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-	return buffer;
 }

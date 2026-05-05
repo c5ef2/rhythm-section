@@ -7,7 +7,7 @@ import type {
 } from '../rhythm/types';
 import { configureIosPlayback, primeIosPlayback } from './ios-audio';
 import { Scheduler, type Synth } from './scheduler';
-import { WebAudioSynth } from './web-audio-synth';
+import { loadVoiceBuffers, WebAudioSynth } from './web-audio-synth';
 import { WakeLock } from './wake-lock';
 
 export interface PlayInputs {
@@ -35,29 +35,38 @@ export interface PlayerCallbacks {
  * keep their settings in one place and trigger a restart whenever anything
  * that affects playback has changed.
  *
- * Audio is synthesized live with raw Web Audio primitives (see
- * `web-audio-synth.ts`) — there's no fetch, no worklet, no soundbank to
- * boot. As soon as the AudioContext exists the synth is ready, so the UI
- * doesn't need a "loading" state and `run()` can fire immediately on the
- * first user gesture.
+ * Audio comes from six pre-baked drum / bass samples (`static/samples/`)
+ * decoded into AudioBuffers on first Play. Decoding is small (~250 KB
+ * total) and quick, but it IS async, so the first Play press waits on
+ * one fetch+decode round; subsequent presses are instant.
  */
 export class Player {
 	private ctx: AudioContext | null = null;
 	private synth: Synth | null = null;
+	private synthPromise: Promise<Synth> | null = null;
 	private scheduler: Scheduler | null = null;
 	private wakeLock = new WakeLock();
 
 	constructor(private readonly callbacks: PlayerCallbacks) {}
 
-	private ensureContext(): { ctx: AudioContext; synth: Synth } {
+	private ensureContext(): AudioContext {
 		if (!this.ctx) {
 			this.ctx = new AudioContext();
 			configureIosPlayback(this.ctx);
 		}
-		if (!this.synth) {
-			this.synth = new WebAudioSynth(this.ctx);
+		return this.ctx;
+	}
+
+	private getSynth(ctx: AudioContext): Promise<Synth> {
+		if (this.synth) return Promise.resolve(this.synth);
+		if (!this.synthPromise) {
+			this.synthPromise = loadVoiceBuffers(ctx).then((buffers) => {
+				const synth = new WebAudioSynth(ctx, buffers);
+				this.synth = synth;
+				return synth;
+			});
 		}
-		return { ctx: this.ctx, synth: this.synth };
+		return this.synthPromise;
 	}
 
 	async run(inputs: PlayInputs): Promise<void> {
@@ -65,8 +74,9 @@ export class Player {
 		// silent-audio play() is rejected outside a user gesture, so the
 		// async work below can't precede it.
 		primeIosPlayback();
-		const { ctx, synth } = this.ensureContext();
+		const ctx = this.ensureContext();
 		if (ctx.state === 'suspended') await ctx.resume();
+		const synth = await this.getSynth(ctx);
 
 		// Tear down any previous cycle. `synth.stopAll()` cancels every
 		// AudioBufferSourceNode / OscillatorNode whose start time hasn't
