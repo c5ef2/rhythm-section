@@ -82,32 +82,34 @@ export class WebAudioSynth implements Synth {
 	 * 1. **Pass the codec's DC blocker.** SBC / AAC / aptX run a high-
 	 *    pass filter (~10–20 Hz cut-off) on the line-in, so a pure DC
 	 *    offset gets stripped to zero before the codec ever sees it.
-	 *    Use a sine above the cut-off — 30 Hz is comfortably past it.
 	 * 2. **Stay above the codec's silence threshold.** Empirically that
 	 *    sits around -55 to -65 dB; below that, longer rests and
 	 *    bar-line gaps still let the codec sleep.
-	 * 3. **Stay below human-audible** on the typical playback chain:
-	 *    phone speakers, earbuds, and (the hard one) over-ear headphones
-	 *    that reproduce sub-bass cleanly down to 20 Hz.
+	 * 3. **Stay perceptually below the noise floor** on the typical
+	 *    playback chain: phone speakers, earbuds, and over-ear
+	 *    headphones — including the ones with adaptive DSP / AGC.
 	 *
-	 * 30 Hz at -65 dB is the current compromise. Phone speakers can't
-	 * reproduce 30 Hz at all; earbuds barely; only properly-tuned over-
-	 * ear headphones reproduce it audibly, and at -65 dB even those play
-	 * it just below most rooms' noise floor. If a user reports BT
-	 * dropouts again, push the gain up before changing the frequency —
-	 * the silence threshold matters more than the absolute level.
+	 * The third constraint is the hard one. A previous version used a
+	 * 30 Hz sine, which works for codecs but gives BT headphones'
+	 * dynamic-EQ / AGC a perfect target to lock onto and *boost* — the
+	 * "keep-alive" became audible as a low buzz and got worse, not
+	 * better, as we lowered the gain (the AGC compensated more).
+	 *
+	 * White noise is the workaround. Codecs see broadband activity and
+	 * never sleep; AGC can't single out a frequency to amplify; and
+	 * even when slightly audible it perceptually blends into room
+	 * noise instead of standing out as a tone. Loop a 1-second buffer
+	 * of band-limited noise at ≈-72 dB through a `GainNode` for the
+	 * AudioContext's lifetime.
 	 */
 	private startKeepAlive(): void {
-		const KEEPALIVE_FREQ_HZ = 30;
-		const KEEPALIVE_GAIN = 0.00056; // ≈ -65 dB
-		const osc = new OscillatorNode(this.ctx, {
-			type: 'sine',
-			frequency: KEEPALIVE_FREQ_HZ
-		});
+		const KEEPALIVE_GAIN = 0.00025; // ≈ -72 dB
+		const buffer = createKeepAliveNoiseBuffer(this.ctx);
+		const src = new AudioBufferSourceNode(this.ctx, { buffer, loop: true });
 		const gain = new GainNode(this.ctx, { gain: KEEPALIVE_GAIN });
-		osc.connect(gain).connect(this.ctx.destination);
-		osc.start();
-		this.keepAlive = osc;
+		src.connect(gain).connect(this.ctx.destination);
+		src.start();
+		this.keepAlive = src;
 	}
 
 	playClick(time: number, emphasis: 'downbeat' | 'onbeat' | 'subbeat'): void {
@@ -197,4 +199,18 @@ export class WebAudioSynth implements Synth {
 			this.active.delete(src);
 		};
 	}
+}
+
+/**
+ * Generate one second of white noise as a mono AudioBuffer. Looped on a
+ * source node, this is the keep-alive signal for Bluetooth output (see
+ * {@link WebAudioSynth.startKeepAlive}). One second is plenty long to
+ * avoid any audible periodicity at the loop boundary.
+ */
+function createKeepAliveNoiseBuffer(ctx: AudioContext): AudioBuffer {
+	const length = ctx.sampleRate;
+	const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+	const data = buffer.getChannelData(0);
+	for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+	return buffer;
 }
