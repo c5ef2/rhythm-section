@@ -11,6 +11,20 @@ import {
 	Voice
 } from 'vexflow';
 import type { NoteLength, RhythmEvent } from '../rhythm/types';
+import {
+	BEATS_PER_BAR,
+	FIRST_STAVE_MODIFIERS,
+	MID_STAVE_MODIFIERS,
+	STACK_BREAKPOINT,
+	STAVE_HEIGHT,
+	STAVE_PADDING,
+	UNITS,
+	UNITS_PER_BEAT,
+	computeStaveWidths,
+	isDotted,
+	splitIntoBars,
+	type BarSlice
+} from './layout';
 
 export interface RenderResult {
 	/**
@@ -27,32 +41,6 @@ export interface RenderResult {
 	 * too.
 	 */
 	highlightElements: SVGElement[][];
-}
-
-const STAVE_HEIGHT = 140;
-const STAVE_PADDING = 10;
-const FIRST_STAVE_MODIFIERS = 45; // time signature only (no clef)
-const MID_STAVE_MODIFIERS = 20;
-const MIN_PER_BAR = 220;
-const STACK_BREAKPOINT = 520; // below this, 2 bars stack vertically instead of side by side
-const FORMATTER_MARGIN = 20;
-
-const UNITS_PER_BEAT = 12;
-const BEATS_PER_BAR = 4;
-const UNITS_PER_BAR = UNITS_PER_BEAT * BEATS_PER_BAR;
-const UNITS: Readonly<Record<NoteLength, number>> = {
-	quarter: 12,
-	'dotted-eighth': 9,
-	eighth: 6,
-	'eighth-triplet': 4,
-	sixteenth: 3
-};
-
-interface BarSlice {
-	events: RhythmEvent[];
-	// indexes in the original events array (so we can still produce a flat
-	// noteElements map for highlighting)
-	indexes: number[];
 }
 
 interface BeamAttachment {
@@ -206,72 +194,6 @@ function drawIntoTarget(
 	return { flatNotes, flatIndexMap, width: totalWidth, height: totalHeight };
 }
 
-/**
- * Compute a width for each bar-stave. When bars sit on their own rows
- * (stacked layout) we return the same width for every bar so rows line up
- * visually. Otherwise each bar gets its own natural width, scaled down if
- * the whole row overflows the viewport budget.
- */
-function computeStaveWidths(
-	minNotesWidths: number[],
-	rows: number[][],
-	availableWidth: number,
-	stacked: boolean
-): number[] {
-	const widths = new Array(minNotesWidths.length).fill(0) as number[];
-
-	if (stacked) {
-		// All rows are single-bar rows. Pick one width = max of each row's
-		// natural width, capped at the available budget.
-		const rowBudget = Math.max(0, availableWidth - STAVE_PADDING * 2);
-		const naturalPerRow = rows.map((row) => {
-			const i = row[0];
-			return (
-				Math.max(minNotesWidths[i] + FORMATTER_MARGIN, MIN_PER_BAR) + FIRST_STAVE_MODIFIERS
-			);
-		});
-		const target = rowBudget > 0
-			? Math.min(rowBudget, Math.max(...naturalPerRow))
-			: Math.max(...naturalPerRow);
-		rows.forEach((row) => (widths[row[0]] = target));
-		return widths;
-	}
-
-	rows.forEach((row) => {
-		const rowBudget = Math.max(0, availableWidth - STAVE_PADDING * 2);
-		const natural = row.map((i, localIdx) => {
-			const modifiers = localIdx === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
-			return Math.max(minNotesWidths[i] + FORMATTER_MARGIN, MIN_PER_BAR) + modifiers;
-		});
-		const naturalSum = natural.reduce((a, b) => a + b, 0);
-		if (rowBudget === 0 || naturalSum <= rowBudget) {
-			row.forEach((i, localIdx) => (widths[i] = natural[localIdx]));
-			return;
-		}
-		// Too wide — scale each bar down proportionally.
-		const scale = rowBudget / naturalSum;
-		row.forEach((i, localIdx) => {
-			const modifiers = localIdx === 0 ? FIRST_STAVE_MODIFIERS : MID_STAVE_MODIFIERS;
-			const minimum = Math.max(minNotesWidths[i] * 0.6, MIN_PER_BAR * 0.6) + modifiers;
-			widths[i] = Math.max(minimum, natural[localIdx] * scale);
-		});
-	});
-	return widths;
-}
-
-function splitIntoBars(events: RhythmEvent[], bars: number): BarSlice[] {
-	const slices: BarSlice[] = [];
-	for (let i = 0; i < bars; i++) slices.push({ events: [], indexes: [] });
-	let position = 0;
-	events.forEach((e, i) => {
-		const barIndex = Math.min(Math.floor(position / UNITS_PER_BAR), bars - 1);
-		slices[barIndex].events.push(e);
-		slices[barIndex].indexes.push(i);
-		position += UNITS[e.length];
-	});
-	return slices;
-}
-
 function toStaveNote(e: RhythmEvent): StaveNote {
 	const duration = vexDuration(e.length);
 	// No clef is drawn. f/4 (with the default treble clef inferred by
@@ -300,10 +222,6 @@ function vexDuration(length: NoteLength): string {
 		case 'sixteenth':
 			return '16';
 	}
-}
-
-function isDotted(length: NoteLength): boolean {
-	return length === 'dotted-eighth';
 }
 
 function isBeamable(e: RhythmEvent): boolean {

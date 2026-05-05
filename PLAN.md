@@ -96,8 +96,9 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 │       │   ├── seeded.ts                mulberry32 + randomSeed
 │       │   └── seeded.test.ts
 │       ├── notation/
-│       │   ├── render.ts                VexFlow renderer (per-beat beaming, half-ties, ResizeObserver fit, highlight table)
-│       │   └── share-image.ts           captureStaffImage + updateOgImage
+│       │   ├── layout.ts                pure layout/math (splitIntoBars, computeStaveWidths, isDotted, UNITS)
+│       │   ├── layout.test.ts
+│       │   └── render.ts                VexFlow renderer (per-beat beaming, half-ties, ResizeObserver fit, highlight table)
 │       ├── audio/
 │       │   ├── events.ts                pure buildEventList
 │       │   ├── events.test.ts
