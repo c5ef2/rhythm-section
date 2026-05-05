@@ -51,6 +51,12 @@ export interface GeneratorOptions {
 /** Quarter-note subdivisions used by the metronome click scheduler. */
 export type MetronomeDivision = 'half' | 'quarter' | 'eighth' | 'triplet' | 'sixteenth';
 
+/** Which voice the rhythm hits play through when audio is on. */
+export type RhythmInstrument = 'drum' | 'bass';
+
+/** How often the hihat fires under the rhythm — independent of the rhythm itself. */
+export type HihatSubdivision = 'off' | 'eighth' | 'sixteenth' | 'triplet';
+
 export interface MetronomeOptions {
 	enabled: boolean;
 	division: MetronomeDivision;

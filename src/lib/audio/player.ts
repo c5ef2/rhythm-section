@@ -1,10 +1,14 @@
-import type { MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
-import type { HihatSubdivision } from '../state/share';
+import type {
+	HihatSubdivision,
+	MetronomeOptions,
+	NoteLength,
+	RhythmEvent,
+	RhythmInstrument
+} from '../rhythm/types';
 import { configureIosPlayback, primeIosPlayback } from './ios-audio';
 import { pickRestartTime } from './restart';
 import { Scheduler, type Synth } from './scheduler';
 import { createSoundFontSynth, fetchBundledSoundFont } from './soundfont-synth';
-import type { RhythmInstrument } from './events';
 import { WakeLock } from './wake-lock';
 
 export interface PlayInputs {

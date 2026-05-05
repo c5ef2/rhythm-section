@@ -2,10 +2,15 @@ import { browser } from '$app/environment';
 import { bpmStepDown, bpmStepUp, snapBpm } from '../audio/bpm';
 import { Player } from '../audio/player';
 import { randomSeed } from '../rng/seeded';
-import type { MetronomeDivision, NoteLength } from '../rhythm/types';
+import type {
+	HihatSubdivision,
+	MetronomeDivision,
+	NoteLength,
+	RhythmInstrument
+} from '../rhythm/types';
 import { appState } from './app-state.svelte';
 import { environment } from './environment.svelte';
-import { encodeShare, type HihatSubdivision, type RhythmInstrument } from './share';
+import { encodeShare } from './share';
 
 const player = browser
 	? new Player({

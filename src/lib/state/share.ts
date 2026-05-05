@@ -1,8 +1,11 @@
 import { MAELZEL_BPMS, snapBpm } from '../audio/bpm';
-import type { MetronomeDivision, MetronomeOptions, NoteLength } from '../rhythm/types';
-
-export type RhythmInstrument = 'drum' | 'bass';
-export type HihatSubdivision = 'off' | 'eighth' | 'sixteenth' | 'triplet';
+import type {
+	HihatSubdivision,
+	MetronomeDivision,
+	MetronomeOptions,
+	NoteLength,
+	RhythmInstrument
+} from '../rhythm/types';
 
 export interface SharedState {
 	bpm: number;

@@ -1,5 +1,11 @@
-import type { MetronomeDivision, MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
-import type { HihatSubdivision } from '../state/share';
+import type {
+	HihatSubdivision,
+	MetronomeDivision,
+	MetronomeOptions,
+	NoteLength,
+	RhythmEvent,
+	RhythmInstrument
+} from '../rhythm/types';
 
 const UNITS_PER_BEAT = 12;
 const BEATS_PER_BAR = 4;
@@ -14,7 +20,6 @@ const UNITS: Readonly<Record<NoteLength, number>> = {
 };
 
 export type ClickEmphasis = 'downbeat' | 'onbeat' | 'subbeat';
-export type RhythmInstrument = 'drum' | 'bass';
 export type DrumVoice = 'kick' | 'snare' | 'hihat';
 
 export type AudioEvent =
