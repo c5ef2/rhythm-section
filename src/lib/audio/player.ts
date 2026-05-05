@@ -132,8 +132,7 @@ export class Player {
 		if (isRestart) synth.stopAll();
 		this.scheduler = new Scheduler({
 			ctx,
-			click: synth,
-			rhythm: synth,
+			synth,
 			events: inputs.events,
 			bars: inputs.bars,
 			bpm: inputs.bpm,

@@ -5,22 +5,22 @@ const SCHEDULE_AHEAD_SEC = 0.1;
 
 type HighlightListener = (rhythmEventIndex: number | null) => void;
 
-export interface ClickSink {
+/**
+ * The combined audio sink the Player hands to the Scheduler. Currently the
+ * only implementation is the SoundFont-backed synth in soundfont-synth.ts.
+ *
+ * Click and rhythm methods sit on the same object because in practice the
+ * Player has always handed the same SoundFont synth to both — they share a
+ * worklet, a soundbank, and a destination. Splitting them into separate
+ * `ClickSink` / `RhythmSink` interfaces invited callers to assume the two
+ * could differ, when they can't.
+ */
+export interface Synth {
 	playClick(time: number, emphasis: 'downbeat' | 'onbeat' | 'subbeat'): void;
-}
-
-export interface RhythmSink {
 	playKick(time: number): void;
 	playSnare(time: number): void;
 	playHihat(time: number): void;
 	playBass(time: number, durationSec: number): void;
-}
-
-/**
- * The combined audio sink the Player hands to the Scheduler. Currently the
- * only implementation is the SoundFont-backed synth in soundfont-synth.ts.
- */
-export interface Synth extends ClickSink, RhythmSink {
 	/**
 	 * Silence anything currently sounding (e.g. a sustaining bass note from a
 	 * cycle the Player just decided to abandon). The new cycle's startTime is
@@ -33,8 +33,7 @@ export interface Synth extends ClickSink, RhythmSink {
 
 export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> {
 	ctx: AudioContext;
-	click: ClickSink;
-	rhythm?: RhythmSink;
+	synth: Synth;
 	onHighlight: HighlightListener;
 	loop?: boolean;
 	onComplete?: () => void;
@@ -176,25 +175,26 @@ export class Scheduler {
 	}
 
 	private dispatch(e: AudioEvent): void {
+		const synth = this.cfg.synth;
 		switch (e.type) {
 			case 'metronome':
-				this.cfg.click.playClick(e.time, e.emphasis);
+				synth.playClick(e.time, e.emphasis);
 				this.bumpHorizon(e.time);
 				break;
 			case 'kick':
-				this.cfg.rhythm?.playKick(e.time);
+				synth.playKick(e.time);
 				this.bumpHorizon(e.time);
 				break;
 			case 'snare':
-				this.cfg.rhythm?.playSnare(e.time);
+				synth.playSnare(e.time);
 				this.bumpHorizon(e.time);
 				break;
 			case 'hihat':
-				this.cfg.rhythm?.playHihat(e.time);
+				synth.playHihat(e.time);
 				this.bumpHorizon(e.time);
 				break;
 			case 'bass':
-				this.cfg.rhythm?.playBass(e.time, e.durationSec);
+				synth.playBass(e.time, e.durationSec);
 				this.bumpHorizon(e.time + e.durationSec);
 				break;
 			case 'highlight':
