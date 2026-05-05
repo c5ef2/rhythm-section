@@ -271,7 +271,7 @@ function fromBase64UrlToBytes(s: string): Uint8Array | null {
 
 // --- shape validator ---------------------------------------------------------
 
-function isSharedState(v: unknown): v is SharedState {
+export function isSharedState(v: unknown): v is SharedState {
 	if (!v || typeof v !== 'object') return false;
 	const s = v as Record<string, unknown>;
 	const hihatOk =

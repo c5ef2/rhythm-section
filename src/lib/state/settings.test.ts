@@ -63,6 +63,17 @@ describe('settings persistence', () => {
 		expect({ ...loaded, seed: 0 }).toEqual({ ...DEFAULT_SETTINGS, seed: 0 });
 	});
 
+	it('rejects stored payloads whose shape does not match Settings', () => {
+		// Simulate a future-version payload that's missing a required field
+		// (or contains a wrong-typed one). The merge would otherwise leave
+		// the runtime carrying an undefined; isSharedState rejects it so we
+		// fall back to defaults instead.
+		const bogus = JSON.stringify({ ...DEFAULT_SETTINGS, hihatSubdivision: 'not-a-thing' });
+		storage.setItem(STORAGE_KEY, bogus);
+		const loaded = loadSettings({ storage: storage as unknown as Storage, hash: '' });
+		expect({ ...loaded, seed: 0 }).toEqual({ ...DEFAULT_SETTINGS, seed: 0 });
+	});
+
 	// In a standalone PWA the hash is essentially write-only — iOS Safari
 	// (and some other shells) capture the URL at install time and re-launch
 	// the app at THAT URL every cold launch, ignoring later

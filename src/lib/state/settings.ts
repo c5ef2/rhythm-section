@@ -1,6 +1,6 @@
 import { randomSeed } from '../rng/seeded';
 import type { NoteLength } from '../rhythm/types';
-import { decodeShare } from './share';
+import { decodeShare, isSharedState } from './share';
 import type { SharedState } from './share';
 
 // Whole + half are still in the NoteLength type (the generator and notation
@@ -100,7 +100,7 @@ function loadFromStorage(storage: Storage): Settings | null {
 		// Merge with defaults so older stored payloads missing newer fields
 		// (rhythmAudio, snareOnBackbeats, hihatSubdivision, …) still produce
 		// a complete Settings object.
-		return {
+		const merged = {
 			...DEFAULT_SETTINGS,
 			...parsed,
 			metronome: {
@@ -108,6 +108,11 @@ function loadFromStorage(storage: Storage): Settings | null {
 				...(parsed.metronome ?? {})
 			}
 		};
+		// Schema-check the merged result. If a Settings field gets added
+		// without a matching DEFAULT_SETTINGS entry the merge silently
+		// leaves `undefined`; the validator catches that and we fall back
+		// to defaults instead of letting the runtime trip on a bad shape.
+		return isSharedState(merged) ? merged : null;
 	} catch {
 		return null;
 	}
