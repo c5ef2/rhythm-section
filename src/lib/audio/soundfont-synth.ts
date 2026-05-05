@@ -74,6 +74,12 @@ export async function createSoundFontSynth({
 			synth.noteOn(MELODIC_CHANNEL, BASS_PITCH, 100, { time });
 			synth.noteOff(MELODIC_CHANNEL, BASS_PITCH, { time: time + durationSec });
 		},
+		stopAll() {
+			// `force: true` cuts notes immediately instead of running their
+			// release envelope — what we want when a new cycle is about to
+			// start, so a stale bass tail doesn't bleed under the new rhythm.
+			synth.stopAll(true);
+		},
 		destroy() {
 			synth.destroy();
 		}

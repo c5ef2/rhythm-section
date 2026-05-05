@@ -1,6 +1,7 @@
 import type { MetronomeOptions, NoteLength, RhythmEvent } from '../rhythm/types';
 import type { HihatSubdivision } from '../state/share';
 import { configureIosPlayback, primeIosPlayback } from './ios-audio';
+import { pickRestartTime } from './restart';
 import { Scheduler, type Synth } from './scheduler';
 import { createSoundFontSynth, fetchBundledSoundFont } from './soundfont-synth';
 import type { RhythmInstrument } from './events';
@@ -115,7 +116,16 @@ export class Player {
 		// load off now. Returns the loaded synth or surfaces 'error'.
 		const synth = this.synth ?? (await this.kickOffSoundFontLoad());
 
+		// Read the previous scheduler's tail BEFORE stopping it, so we know
+		// how far the worklet's queued audio extends. The new cycle has to
+		// start past that tail or the old rhythm's pre-queued kicks will
+		// still fire on top of the new highlights (and visibly desync).
+		const isRestart = this.scheduler !== null;
+		const prevTail = this.scheduler?.tailTime ?? 0;
 		this.scheduler?.stop();
+		// Cut any sustaining note (e.g. a long bass) so its tail doesn't leak
+		// under the next cycle.
+		if (isRestart) synth.stopAll();
 		this.scheduler = new Scheduler({
 			ctx,
 			click: synth,
@@ -131,6 +141,7 @@ export class Player {
 			hihatSubdivision: inputs.hihatSubdivision,
 			countInBars: inputs.countInBars,
 			loop: inputs.loop,
+			startFloor: pickRestartTime(ctx.currentTime, prevTail),
 			onHighlight: (i) => this.callbacks.onActiveNote(i),
 			onComplete: () => {
 				this.wakeLock.release();

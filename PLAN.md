@@ -106,6 +106,8 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 │       │   ├── soundfont-synth.ts       SpessaSynth-backed Synth + fetchBundledSoundFont
 │       │   ├── ios-audio.ts             configureIosPlayback (audioSession) + primeIosPlayback (silent <audio>)
 │       │   ├── wake-lock.ts             Screen Wake Lock API wrapper
+│       │   ├── restart.ts               pickRestartTime — picks a new cycle startTime past prev. tail
+│       │   ├── restart.test.ts
 │       │   ├── player.ts                Player owns ctx, synth, scheduler, wake lock, soundfont preload
 │       │   ├── bpm.ts                   Maelzel notch table + snap/step
 │       │   └── bpm.test.ts
@@ -231,6 +233,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 - `buildEventList` is a **pure** function: `{ metronome clicks, rhythm hits, highlight markers }` sorted by time. Pure → easy to test, no mocks.
 - **Highlight dispatch** is a `requestAnimationFrame` loop that reads `ctx.currentTime` directly and picks the last highlight whose time ≤ now. Never uses `setTimeout` for highlight timing (would drift away from the audio clock).
 - **Loop**: on cycle end, `restartSeamless()` re-primes the event list with `startTime = previous cycleEndTime`. Count-in only applies to the first cycle.
+- **Restart-without-overlap (`startFloor`).** spessasynth's worklet has no public API to cancel a future-scheduled `noteOn`, so when the user regenerates we can't simply stop the old scheduler and start at `currentTime + 0.05` — the kicks/clicks already queued for the next ~100 ms still fire on top of the new highlights. The Scheduler tracks `tailTime` (latest dispatched audio-event time, including bass sustain) and accepts a `startFloor` config knob; `Player.run()` reads the previous scheduler's tail before tearing it down and passes `pickRestartTime(currentTime, prevTail)` (`src/lib/audio/restart.ts`) so the new cycle begins past the worklet's queued audio. The Player also calls `synth.stopAll()` on restart so a long bass note doesn't bleed under the new rhythm.
 
 ### 3.10 State, persistence, share (`src/lib/state/`)
 

@@ -21,6 +21,13 @@ export interface RhythmSink {
  * only implementation is the SoundFont-backed synth in soundfont-synth.ts.
  */
 export interface Synth extends ClickSink, RhythmSink {
+	/**
+	 * Silence anything currently sounding (e.g. a sustaining bass note from a
+	 * cycle the Player just decided to abandon). The new cycle's startTime is
+	 * already pushed past the worklet's scheduled-noteOn queue; this only
+	 * handles the audible tail of notes that already fired.
+	 */
+	stopAll(): void;
 	destroy(): void;
 }
 
@@ -31,6 +38,14 @@ export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> 
 	onHighlight: HighlightListener;
 	loop?: boolean;
 	onComplete?: () => void;
+	/**
+	 * Floor for the cycle's start time. Used by the Player when restarting the
+	 * scheduler (e.g. after regenerate) to make sure the new cycle begins after
+	 * the look-ahead window of the previous scheduler has fully elapsed —
+	 * otherwise the spessasynth worklet's pre-queued `noteOn` events for the
+	 * old rhythm bleed audibly into the new highlights.
+	 */
+	startFloor?: number;
 }
 
 interface HighlightMark {
@@ -55,6 +70,13 @@ export class Scheduler {
 	 * on where the last scheduled event happened to be.
 	 */
 	private cycleEndTime = 0;
+	/**
+	 * Latest audio-context time we've actually committed to the synth (i.e.
+	 * passed to `playClick`/`playKick`/.../`playBass`, including bass sustain).
+	 * The Player reads this after stop() so the next cycle can begin past the
+	 * tail of the previous one without overlapping audio.
+	 */
+	private dispatchedHorizon = 0;
 
 	constructor(config: SchedulerConfig) {
 		this.ctx = config.ctx;
@@ -64,11 +86,22 @@ export class Scheduler {
 	start(): void {
 		if (this.running) return;
 		this.running = true;
-		const startTime = this.ctx.currentTime + 0.05;
+		const earliest = this.ctx.currentTime + 0.05;
+		const startTime = Math.max(earliest, this.cfg.startFloor ?? 0);
 		this.prime(startTime, this.cfg.countInBars);
 		this.tick();
 		this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
 		this.rafHandle = requestAnimationFrame(() => this.highlightFrame());
+	}
+
+	/**
+	 * Time of the last audio event we sent to the synth (kick/snare/hihat/bass
+	 * including its sustain, plus metronome clicks). `0` when the scheduler
+	 * never dispatched anything. The Player uses this to start the next cycle
+	 * past the previous scheduler's tail.
+	 */
+	get tailTime(): number {
+		return this.dispatchedHorizon;
 	}
 
 	stop(): void {
@@ -146,23 +179,32 @@ export class Scheduler {
 		switch (e.type) {
 			case 'metronome':
 				this.cfg.click.playClick(e.time, e.emphasis);
+				this.bumpHorizon(e.time);
 				break;
 			case 'kick':
 				this.cfg.rhythm?.playKick(e.time);
+				this.bumpHorizon(e.time);
 				break;
 			case 'snare':
 				this.cfg.rhythm?.playSnare(e.time);
+				this.bumpHorizon(e.time);
 				break;
 			case 'hihat':
 				this.cfg.rhythm?.playHihat(e.time);
+				this.bumpHorizon(e.time);
 				break;
 			case 'bass':
 				this.cfg.rhythm?.playBass(e.time, e.durationSec);
+				this.bumpHorizon(e.time + e.durationSec);
 				break;
 			case 'highlight':
 				// Handled by the rAF loop reading ctx.currentTime directly.
 				break;
 		}
+	}
+
+	private bumpHorizon(t: number): void {
+		if (t > this.dispatchedHorizon) this.dispatchedHorizon = t;
 	}
 
 	private highlightFrame(): void {
