@@ -21,7 +21,6 @@
 	];
 
 	const DIVISIONS: { value: MetronomeDivision; length: NoteLength; label: string }[] = [
-		{ value: 'half', length: 'half', label: 'half' },
 		{ value: 'quarter', length: 'quarter', label: 'quarter' },
 		{ value: 'eighth', length: 'eighth', label: 'eighth' },
 		{ value: 'triplet', length: 'eighth-triplet', label: 'triplet' },

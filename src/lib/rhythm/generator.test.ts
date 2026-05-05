@@ -22,13 +22,7 @@ function totalSlots(events: RhythmEvent[]): number {
 }
 
 describe('generateRhythm (binary)', () => {
-	const allBinary: NoteLength[] = [
-		'half',
-		'quarter',
-		'eighth',
-		'sixteenth',
-		'dotted-eighth'
-	];
+	const allBinary: NoteLength[] = ['quarter', 'eighth', 'sixteenth', 'dotted-eighth'];
 
 	it('is deterministic for a given seed', () => {
 		const a = generateRhythm({
@@ -198,13 +192,7 @@ describe('beat-boundary splitting', () => {
 		for (let seed = 0; seed < 200; seed++) {
 			const { events } = generateRhythm({
 				bars: 2,
-				allowedLengths: [
-					'half',
-					'quarter',
-					'eighth',
-					'sixteenth',
-					'dotted-eighth'
-				],
+				allowedLengths: ['quarter', 'eighth', 'sixteenth', 'dotted-eighth'],
 				allowRests: true,
 				allowTies: false,
 				seed
@@ -282,13 +270,7 @@ describe('allowTies=false', () => {
 		for (let seed = 0; seed < 500; seed++) {
 			const { events } = generateRhythm({
 				bars: 2,
-				allowedLengths: [
-					'half',
-					'quarter',
-					'eighth',
-					'sixteenth',
-					'dotted-eighth'
-				],
+				allowedLengths: ['quarter', 'eighth', 'sixteenth', 'dotted-eighth'],
 				allowRests: true,
 				allowTies: false,
 				seed
@@ -303,13 +285,7 @@ describe('tie chain cap', () => {
 		for (let seed = 0; seed < 500; seed++) {
 			const { events } = generateRhythm({
 				bars: 2,
-				allowedLengths: [
-					'half',
-					'quarter',
-					'eighth',
-					'sixteenth',
-					'dotted-eighth'
-				],
+				allowedLengths: ['quarter', 'eighth', 'sixteenth', 'dotted-eighth'],
 				allowRests: false,
 				allowTies: true,
 				seed
@@ -332,7 +308,7 @@ describe('tie chain cap', () => {
 		for (let seed = 0; seed < 500; seed++) {
 			const { events } = generateRhythm({
 				bars: 2,
-				allowedLengths: ['half', 'quarter', 'eighth', 'sixteenth', 'dotted-eighth'],
+				allowedLengths: ['quarter', 'eighth', 'sixteenth', 'dotted-eighth'],
 				allowRests: false,
 				allowTies: true,
 				seed

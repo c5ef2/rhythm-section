@@ -8,7 +8,6 @@
 	let { length, size = 24 }: Props = $props();
 
 	const FLAGS: Record<string, number> = { eighth: 1, sixteenth: 2, 'dotted-eighth': 1 };
-	const isHollow = $derived(length === 'half');
 	const hasDot = $derived(length === 'dotted-eighth');
 	const flagCount = $derived(FLAGS[length] ?? 0);
 	const isTriplet = $derived(length === 'eighth-triplet');
@@ -67,7 +66,7 @@
 			rx="4.4"
 			ry="3.1"
 			transform={`rotate(-20 ${cx} ${cy})`}
-			fill={isHollow ? 'none' : 'currentColor'}
+			fill="currentColor"
 		/>
 		{#if hasDot}
 			<circle cx={cx + 7} cy={cy} r="1.2" fill="currentColor" stroke="none" />

@@ -3,10 +3,9 @@ import type { NoteLength } from '../rhythm/types';
 import { decodeShare, isSharedState } from './share';
 import type { SharedState } from './share';
 
-// `half` is in the NoteLength union for the metronome's half-division glyph
-// but is never picked by the user as a rhythm length. Storage / hash payloads
-// are filtered to this set on every load so a stale `'half'` entry can't
-// sneak into `allowedLengths`.
+// Storage / hash payloads are filtered to this set on every load so an entry
+// for a removed length (e.g. `'half'` from before the metronome stopped using
+// it) can't sneak into `allowedLengths`.
 const VALID_LENGTHS: ReadonlySet<NoteLength> = new Set([
 	'quarter',
 	'eighth',

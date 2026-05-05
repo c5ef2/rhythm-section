@@ -10,7 +10,6 @@ import type {
 const UNITS_PER_BEAT = 12;
 const BEATS_PER_BAR = 4;
 const UNITS: Readonly<Record<NoteLength, number>> = {
-	half: 24,
 	quarter: 12,
 	'dotted-eighth': 9,
 	eighth: 6,
@@ -230,8 +229,6 @@ function totalSustainSec(events: RhythmEvent[], start: number, secPerBeat: numbe
 
 function clicksPerBeatOf(division: MetronomeDivision): number {
 	switch (division) {
-		case 'half':
-			return 0.5;
 		case 'quarter':
 			return 1;
 		case 'eighth':

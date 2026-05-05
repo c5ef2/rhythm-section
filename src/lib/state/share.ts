@@ -31,18 +31,18 @@ export interface SharedState {
  *   byte 0          version tag (PACK_VERSION)
  *   bits 8-13   (6) bpm-index into MAELZEL_BPMS
  *   bit  14     (1) bars (0 = 1 bar, 1 = 2 bars)
- *   bits 15-20  (6) allowedLengths bitmask (see LENGTH_BITS below)
- *   bits 21-24  (4) countedBeats bitmask  (bit 0 = beat 1, bit 3 = beat 4)
- *   bits 25-27  (3) metronome.division index (DIVISIONS array)
- *   bit  28     (1) metronome.enabled
- *   bit  29     (1) metronome.emphasizeFirstBeat
- *   bit  30     (1) rhythmInstrument (0 = drum, 1 = bass)
- *   bit  31     (1) rhythmAudio
- *   bit  32     (1) allowRests
- *   bit  33     (1) allowTies
- *   bit  34     (1) countIn
- *   bit  35     (1) snareOnBackbeats
- *   bits 36-37  (2) hihatSubdivision (HIHAT_SUBDIVISIONS index)
+ *   bits 15-19  (5) allowedLengths bitmask (see LENGTH_BITS below)
+ *   bits 20-23  (4) countedBeats bitmask  (bit 0 = beat 1, bit 3 = beat 4)
+ *   bits 24-26  (3) metronome.division index (DIVISIONS array)
+ *   bit  27     (1) metronome.enabled
+ *   bit  28     (1) metronome.emphasizeFirstBeat
+ *   bit  29     (1) rhythmInstrument (0 = drum, 1 = bass)
+ *   bit  30     (1) rhythmAudio
+ *   bit  31     (1) allowRests
+ *   bit  32     (1) allowTies
+ *   bit  33     (1) countIn
+ *   bit  34     (1) snareOnBackbeats
+ *   bits 35-36  (2) hihatSubdivision (HIHAT_SUBDIVISIONS index)
  *   bits 40-71 (32) seed (uint32 LE)
  *
  *   total = 9 bytes  →  base64url ≈ 12 characters.
@@ -52,12 +52,11 @@ export interface SharedState {
  * default settings. We don't attempt forward compatibility.
  */
 
-const PACK_VERSION = 0x03;
+const PACK_VERSION = 0x04;
 
 const HIHAT_SUBDIVISIONS: HihatSubdivision[] = ['off', 'eighth', 'sixteenth', 'triplet'];
 
 const LENGTH_BITS: NoteLength[] = [
-	'half',
 	'quarter',
 	'eighth',
 	'sixteenth',
@@ -65,7 +64,7 @@ const LENGTH_BITS: NoteLength[] = [
 	'dotted-eighth'
 ];
 
-const DIVISIONS: MetronomeDivision[] = ['half', 'quarter', 'eighth', 'triplet', 'sixteenth'];
+const DIVISIONS: MetronomeDivision[] = ['quarter', 'eighth', 'triplet', 'sixteenth'];
 
 export function encodeShare(state: SharedState): string {
 	return toBase64Url(packBinary(state));
@@ -87,7 +86,7 @@ function packBinary(state: SharedState): Uint8Array {
 	const w = new BitWriter();
 	w.write(bpmIndex(state.bpm), 6);
 	w.write(state.bars === 2 ? 1 : 0, 1);
-	w.write(allowedLengthsToMask(state.allowedLengths), 6);
+	w.write(allowedLengthsToMask(state.allowedLengths), 5);
 	w.write(countedBeatsToMask(state.metronome.countedBeats), 4);
 	w.write(divisionIndex(state.metronome.division), 3);
 	w.write(state.metronome.enabled ? 1 : 0, 1);
@@ -115,7 +114,7 @@ function unpackBinary(bytes: Uint8Array): SharedState | null {
 	const r = new BitReader(bytes.subarray(1, 5));
 	const bpmIdx = r.read(6);
 	const bars = r.read(1) === 1 ? 2 : 1;
-	const lengthsMask = r.read(6);
+	const lengthsMask = r.read(5);
 	const countedMask = r.read(4);
 	const divisionIdx = r.read(3);
 	const metronomeEnabled = r.read(1) === 1;
@@ -298,7 +297,6 @@ function isMetronomeOptions(v: unknown): v is MetronomeOptions {
 	if (!v || typeof v !== 'object') return false;
 	const m = v as Record<string, unknown>;
 	const divisionOk =
-		m.division === 'half' ||
 		m.division === 'quarter' ||
 		m.division === 'eighth' ||
 		m.division === 'triplet' ||

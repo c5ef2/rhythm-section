@@ -5,15 +5,7 @@
  * scheduler can compute timing without re-deriving tuplet ratios.
  */
 
-/**
- * `half` is here only because the metronome can click on the half-note
- * subdivision and the segmented control renders a half-note glyph for that
- * choice — the rhythm generator itself never emits a half note. A whole-note
- * length used to be in the list too, but nothing referenced it any more, so
- * it's gone.
- */
 export type NoteLength =
-	| 'half'
 	| 'quarter'
 	| 'eighth'
 	| 'sixteenth'
@@ -22,7 +14,6 @@ export type NoteLength =
 
 /** How many sixteenth-slots each binary note length consumes. */
 export const BINARY_SLOTS: Readonly<Record<Exclude<NoteLength, 'eighth-triplet'>, number>> = {
-	half: 8,
 	quarter: 4,
 	eighth: 2,
 	sixteenth: 1,
@@ -53,8 +44,13 @@ export interface GeneratorOptions {
 	seed: number;
 }
 
-/** Quarter-note subdivisions used by the metronome click scheduler. */
-export type MetronomeDivision = 'half' | 'quarter' | 'eighth' | 'triplet' | 'sixteenth';
+/**
+ * Quarter-note subdivisions used by the metronome click scheduler. There used
+ * to be a 'half' option (one click every two beats) but the per-beat
+ * enable/disable mask makes it redundant: pick `quarter` and turn off two
+ * beats.
+ */
+export type MetronomeDivision = 'quarter' | 'eighth' | 'triplet' | 'sixteenth';
 
 /** Which voice the rhythm hits play through when audio is on. */
 export type RhythmInstrument = 'drum' | 'bass';
