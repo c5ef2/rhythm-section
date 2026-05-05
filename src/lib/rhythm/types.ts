@@ -5,8 +5,14 @@
  * scheduler can compute timing without re-deriving tuplet ratios.
  */
 
+/**
+ * `half` is here only because the metronome can click on the half-note
+ * subdivision and the segmented control renders a half-note glyph for that
+ * choice — the rhythm generator itself never emits a half note. A whole-note
+ * length used to be in the list too, but nothing referenced it any more, so
+ * it's gone.
+ */
 export type NoteLength =
-	| 'whole'
 	| 'half'
 	| 'quarter'
 	| 'eighth'
@@ -16,7 +22,6 @@ export type NoteLength =
 
 /** How many sixteenth-slots each binary note length consumes. */
 export const BINARY_SLOTS: Readonly<Record<Exclude<NoteLength, 'eighth-triplet'>, number>> = {
-	whole: 16,
 	half: 8,
 	quarter: 4,
 	eighth: 2,

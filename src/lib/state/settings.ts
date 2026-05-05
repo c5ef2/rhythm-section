@@ -3,11 +3,10 @@ import type { NoteLength } from '../rhythm/types';
 import { decodeShare, isSharedState } from './share';
 import type { SharedState } from './share';
 
-// Whole + half are still in the NoteLength type (the generator and notation
-// engines still know how to produce them, and the binary share format keeps
-// their bitmask slots so old links don't shift) but they're no longer
-// user-pickable. Settings loaded from storage / hash get filtered down to
-// this set on every load.
+// `half` is in the NoteLength union for the metronome's half-division glyph
+// but is never picked by the user as a rhythm length. Storage / hash payloads
+// are filtered to this set on every load so a stale `'half'` entry can't
+// sneak into `allowedLengths`.
 const VALID_LENGTHS: ReadonlySet<NoteLength> = new Set([
 	'quarter',
 	'eighth',

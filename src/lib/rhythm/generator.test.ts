@@ -23,7 +23,6 @@ function totalSlots(events: RhythmEvent[]): number {
 
 describe('generateRhythm (binary)', () => {
 	const allBinary: NoteLength[] = [
-		'whole',
 		'half',
 		'quarter',
 		'eighth',
@@ -200,7 +199,6 @@ describe('beat-boundary splitting', () => {
 			const { events } = generateRhythm({
 				bars: 2,
 				allowedLengths: [
-					'whole',
 					'half',
 					'quarter',
 					'eighth',
@@ -285,7 +283,6 @@ describe('allowTies=false', () => {
 			const { events } = generateRhythm({
 				bars: 2,
 				allowedLengths: [
-					'whole',
 					'half',
 					'quarter',
 					'eighth',
@@ -307,7 +304,6 @@ describe('tie chain cap', () => {
 			const { events } = generateRhythm({
 				bars: 2,
 				allowedLengths: [
-					'whole',
 					'half',
 					'quarter',
 					'eighth',

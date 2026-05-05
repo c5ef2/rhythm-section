@@ -25,7 +25,6 @@ const TRIPLET_UNITS = 4;
 type BinaryLength = Exclude<NoteLength, 'eighth-triplet'>;
 
 const BINARY_LENGTHS_SET = new Set<NoteLength>([
-	'whole',
 	'half',
 	'quarter',
 	'eighth',

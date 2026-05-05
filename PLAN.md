@@ -140,7 +140,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 
 - Fixed **4/4** time signature.
 - **1 or 2 bars** chosen by the user.
-- User-selectable note lengths: whole, half, quarter, 8th, 16th, 8th-triplet, dotted-eighth.
+- User-selectable note lengths: quarter, 8th, 16th, 8th-triplet, dotted-eighth. (`half` lives in `NoteLength` only because the metronome's half-note division renders a half glyph; nothing emits half notes into the rhythm.)
 - **Include rests** toggle (≈20 % of events become rests when on).
 - **Include ties** toggle.
 - **Seeded deterministic** output via `mulberry32(seed)`. Regenerate = new seed.
@@ -245,7 +245,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
   - Loaded settings also pass through `sanitise()` which drops any `allowedLengths` entries the current build no longer recognises (e.g. `dotted-half` from an old payload).
   - **Standalone PWA loads ignore the hash** (`loadSettings({…, standalone: true})`). iOS Safari (and some other shells) capture the URL the user installed from and re-launch the PWA at THAT URL every cold launch, so a `#s=…` hash that was live in the URL at install time would otherwise resurrect those install-moment settings every cold launch and silently overwrite whatever the user has since changed. The Share button still works because `currentShareUrl` builds the URL from the live state — it never needed `replaceState` to populate the URL. `updateUrlFromState` is also a no-op in standalone for the same reason.
 - **Share URL** format: `#s=<base64url(packed-binary)>` — typically **12 characters**.
-  - Layout: 1 version byte + 31 bit-packed flag bits + 32-bit little-endian seed = 9 bytes total. The flags pack the BPM (6-bit index into the Maelzel notch table), bars (1 bit), `allowedLengths` (7-bit bitmask), `metronome.countedBeats` (4-bit bitmask), `metronome.division` (3-bit index), nine 1-bit booleans (metronome.enabled, emphasizeFirstBeat, rhythmInstrument drum=0/bass=1, rhythmAudio, allowRests, allowTies, countIn, snareOnBackbeats), and a 2-bit `hihatSubdivision` index.
+  - Layout: 1 version byte + 30 bit-packed flag bits + 32-bit little-endian seed = 9 bytes total. The flags pack the BPM (6-bit index into the Maelzel notch table), bars (1 bit), `allowedLengths` (6-bit bitmask), `metronome.countedBeats` (4-bit bitmask), `metronome.division` (3-bit index), nine 1-bit booleans (metronome.enabled, emphasizeFirstBeat, rhythmInstrument drum=0/bass=1, rhythmAudio, allowRests, allowTies, countIn, snareOnBackbeats), and a 2-bit `hihatSubdivision` index.
   - **No legacy fallback.** Bumping the version byte invalidates every URL produced before the bump — `decodeShare` returns null and the page falls back to localStorage / `DEFAULT_SETTINGS`. Old in-the-wild URLs cease to load their state, on purpose: the maintenance cost of multi-version decoders + migration shims wasn't worth it.
   - **Live-synced into the address bar.** An effect on the page calls `updateUrlFromState()` whenever any setting changes; the new URL is written via `history.replaceState` (no extra history entries) so users can copy the address bar at any moment and get a working share link without pressing the Share button.
   - Decode is shape-validated by `isSharedState`.

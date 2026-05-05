@@ -31,18 +31,18 @@ export interface SharedState {
  *   byte 0          version tag (PACK_VERSION)
  *   bits 8-13   (6) bpm-index into MAELZEL_BPMS
  *   bit  14     (1) bars (0 = 1 bar, 1 = 2 bars)
- *   bits 15-21  (7) allowedLengths bitmask (see LENGTH_BITS below)
- *   bits 22-25  (4) countedBeats bitmask  (bit 0 = beat 1, bit 3 = beat 4)
- *   bits 26-28  (3) metronome.division index (DIVISIONS array)
- *   bit  29     (1) metronome.enabled
- *   bit  30     (1) metronome.emphasizeFirstBeat
- *   bit  31     (1) rhythmInstrument (0 = drum, 1 = bass)
- *   bit  32     (1) rhythmAudio
- *   bit  33     (1) allowRests
- *   bit  34     (1) allowTies
- *   bit  35     (1) countIn
- *   bit  36     (1) snareOnBackbeats
- *   bits 37-38  (2) hihatSubdivision (HIHAT_SUBDIVISIONS index)
+ *   bits 15-20  (6) allowedLengths bitmask (see LENGTH_BITS below)
+ *   bits 21-24  (4) countedBeats bitmask  (bit 0 = beat 1, bit 3 = beat 4)
+ *   bits 25-27  (3) metronome.division index (DIVISIONS array)
+ *   bit  28     (1) metronome.enabled
+ *   bit  29     (1) metronome.emphasizeFirstBeat
+ *   bit  30     (1) rhythmInstrument (0 = drum, 1 = bass)
+ *   bit  31     (1) rhythmAudio
+ *   bit  32     (1) allowRests
+ *   bit  33     (1) allowTies
+ *   bit  34     (1) countIn
+ *   bit  35     (1) snareOnBackbeats
+ *   bits 36-37  (2) hihatSubdivision (HIHAT_SUBDIVISIONS index)
  *   bits 40-71 (32) seed (uint32 LE)
  *
  *   total = 9 bytes  →  base64url ≈ 12 characters.
@@ -52,12 +52,11 @@ export interface SharedState {
  * default settings. We don't attempt forward compatibility.
  */
 
-const PACK_VERSION = 0x02;
+const PACK_VERSION = 0x03;
 
 const HIHAT_SUBDIVISIONS: HihatSubdivision[] = ['off', 'eighth', 'sixteenth', 'triplet'];
 
 const LENGTH_BITS: NoteLength[] = [
-	'whole',
 	'half',
 	'quarter',
 	'eighth',
@@ -88,7 +87,7 @@ function packBinary(state: SharedState): Uint8Array {
 	const w = new BitWriter();
 	w.write(bpmIndex(state.bpm), 6);
 	w.write(state.bars === 2 ? 1 : 0, 1);
-	w.write(allowedLengthsToMask(state.allowedLengths), 7);
+	w.write(allowedLengthsToMask(state.allowedLengths), 6);
 	w.write(countedBeatsToMask(state.metronome.countedBeats), 4);
 	w.write(divisionIndex(state.metronome.division), 3);
 	w.write(state.metronome.enabled ? 1 : 0, 1);
@@ -116,7 +115,7 @@ function unpackBinary(bytes: Uint8Array): SharedState | null {
 	const r = new BitReader(bytes.subarray(1, 5));
 	const bpmIdx = r.read(6);
 	const bars = r.read(1) === 1 ? 2 : 1;
-	const lengthsMask = r.read(7);
+	const lengthsMask = r.read(6);
 	const countedMask = r.read(4);
 	const divisionIdx = r.read(3);
 	const metronomeEnabled = r.read(1) === 1;

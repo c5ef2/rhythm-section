@@ -8,8 +8,7 @@
 	let { length, size = 24 }: Props = $props();
 
 	const FLAGS: Record<string, number> = { eighth: 1, sixteenth: 2, 'dotted-eighth': 1 };
-	const isHollow = $derived(length === 'whole' || length === 'half');
-	const hasStem = $derived(length !== 'whole');
+	const isHollow = $derived(length === 'half');
 	const hasDot = $derived(length === 'dotted-eighth');
 	const flagCount = $derived(FLAGS[length] ?? 0);
 	const isTriplet = $derived(length === 'eighth-triplet');
@@ -73,9 +72,7 @@
 		{#if hasDot}
 			<circle cx={cx + 7} cy={cy} r="1.2" fill="currentColor" stroke="none" />
 		{/if}
-		{#if hasStem}
-			<line x1={stemX} y1={cy - 1.2} x2={stemX} y2="6" />
-		{/if}
+		<line x1={stemX} y1={cy - 1.2} x2={stemX} y2="6" />
 		{#if flagCount >= 1}
 			<path d={`M ${stemX} 6 Q ${stemX + 8} 10 ${stemX + 5} 16`} stroke-width="1.8" />
 		{/if}
