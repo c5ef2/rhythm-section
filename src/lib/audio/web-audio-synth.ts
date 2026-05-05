@@ -73,27 +73,33 @@ export class WebAudioSynth implements Synth {
 	/**
 	 * Bluetooth audio devices power-save their codec between packets:
 	 * when the audio stream falls below the codec's silence threshold
-	 * (typically around -50 dB) for more than a few tens of milliseconds
-	 * the receiver buffers / sleeps, and the next event gets clipped or
-	 * dropped during wake-up. We never let the stream go silent.
+	 * for more than a few tens of milliseconds the receiver buffers /
+	 * sleeps, and the next event gets clipped or dropped during wake-up.
+	 * We never let the stream go silent.
 	 *
-	 * Two details that trip up the obvious "constant DC offset" version:
+	 * The signal has to satisfy three constraints:
 	 *
-	 * 1. **Codecs apply a DC blocker.** SBC / AAC / aptX all run a high-
-	 *    pass filter (~10-20 Hz cut-off) on the line-in, so a pure DC
+	 * 1. **Pass the codec's DC blocker.** SBC / AAC / aptX run a high-
+	 *    pass filter (~10–20 Hz cut-off) on the line-in, so a pure DC
 	 *    offset gets stripped to zero before the codec ever sees it.
-	 *    Use a low-frequency *sine* — the signal varies, so the high-
-	 *    pass passes it.
-	 * 2. **Codec silence thresholds are above -80 dB.** Most are around
-	 *    -50 dB. Push the gain up to roughly that level.
+	 *    Use a sine above the cut-off — 30 Hz is comfortably past it.
+	 * 2. **Stay above the codec's silence threshold.** Empirically that
+	 *    sits around -55 to -65 dB; below that, longer rests and
+	 *    bar-line gaps still let the codec sleep.
+	 * 3. **Stay below human-audible** on the typical playback chain:
+	 *    phone speakers, earbuds, and (the hard one) over-ear headphones
+	 *    that reproduce sub-bass cleanly down to 20 Hz.
 	 *
-	 * 30 Hz at -55 dB is below most playback equipment's reproducible
-	 * range and inaudible on phone speakers / earbuds, but every BT
-	 * codec sees it as real audio and stays awake.
+	 * 30 Hz at -65 dB is the current compromise. Phone speakers can't
+	 * reproduce 30 Hz at all; earbuds barely; only properly-tuned over-
+	 * ear headphones reproduce it audibly, and at -65 dB even those play
+	 * it just below most rooms' noise floor. If a user reports BT
+	 * dropouts again, push the gain up before changing the frequency —
+	 * the silence threshold matters more than the absolute level.
 	 */
 	private startKeepAlive(): void {
 		const KEEPALIVE_FREQ_HZ = 30;
-		const KEEPALIVE_GAIN = 0.0018; // ≈ -55 dB
+		const KEEPALIVE_GAIN = 0.00056; // ≈ -65 dB
 		const osc = new OscillatorNode(this.ctx, {
 			type: 'sine',
 			frequency: KEEPALIVE_FREQ_HZ
