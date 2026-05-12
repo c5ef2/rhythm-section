@@ -77,6 +77,10 @@ export class Player {
 		const ctx = this.ensureContext();
 		if (ctx.state === 'suspended') await ctx.resume();
 		const synth = await this.getSynth(ctx);
+		// Re-evaluate the output device so the BT keep-alive matches what's
+		// actually plugged in right now — the user might have paired
+		// headphones (or unpaired them) since the last Play press.
+		if (synth instanceof WebAudioSynth) synth.refreshKeepAlive();
 
 		// Tear down any previous cycle. `synth.stopAll()` cancels every
 		// AudioBufferSourceNode / OscillatorNode whose start time hasn't

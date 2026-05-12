@@ -59,6 +59,28 @@ export async function loadVoiceBuffers(ctx: AudioContext): Promise<Record<Voice,
 	return Object.fromEntries(entries) as Record<Voice, AudioBuffer>;
 }
 
+/**
+ * BT vs. wired/built-in detection threshold (seconds of output latency).
+ * Built-in speakers and wired headphones typically report 0.005–0.02 s;
+ * Bluetooth headsets land in the 0.10–0.30 s range. 0.05 s sits well
+ * between the two clusters with room for outliers either way.
+ */
+export const BT_LATENCY_THRESHOLD_SEC = 0.05;
+
+/**
+ * True when the AudioContext's output looks like a Bluetooth sink — sole
+ * signal is its reported `outputLatency`. Returning `false` for unknown /
+ * zero latency means we won't run the keep-alive noise on outputs we can't
+ * measure; the cost is a single clipped click on the first BT hit before
+ * the user can re-pair, which is much less annoying than steady noise on
+ * outputs that don't need it.
+ */
+export function isBluetoothLikely(outputLatencySec: number | undefined | null): boolean {
+	if (typeof outputLatencySec !== 'number') return false;
+	if (!Number.isFinite(outputLatencySec) || outputLatencySec <= 0) return false;
+	return outputLatencySec >= BT_LATENCY_THRESHOLD_SEC;
+}
+
 export class WebAudioSynth implements Synth {
 	private active = new Set<AudioBufferSourceNode>();
 	private keepAlive: AudioScheduledSourceNode | null = null;
@@ -67,7 +89,19 @@ export class WebAudioSynth implements Synth {
 		private readonly ctx: AudioContext,
 		private readonly buffers: Record<Voice, AudioBuffer>
 	) {
-		this.startKeepAlive();
+		this.refreshKeepAlive();
+	}
+
+	/**
+	 * Re-check the output device and toggle the BT keep-alive accordingly.
+	 * Called once at construction; the Player also calls it on every
+	 * `run()` so a device change (e.g., user pairs BT mid-session) starts
+	 * the keep-alive on the next Play press without forcing a reload.
+	 */
+	refreshKeepAlive(): void {
+		const shouldRun = isBluetoothLikely(this.ctx.outputLatency);
+		if (shouldRun && !this.keepAlive) this.startKeepAlive();
+		else if (!shouldRun && this.keepAlive) this.stopKeepAlive();
 	}
 
 	/**
@@ -114,6 +148,15 @@ export class WebAudioSynth implements Synth {
 		src.connect(gain).connect(this.ctx.destination);
 		src.start();
 		this.keepAlive = src;
+	}
+
+	private stopKeepAlive(): void {
+		try {
+			this.keepAlive?.stop();
+		} catch {
+			// already stopped — fine
+		}
+		this.keepAlive = null;
 	}
 
 	playClick(time: number, emphasis: 'downbeat' | 'onbeat' | 'subbeat'): void {
@@ -179,12 +222,7 @@ export class WebAudioSynth implements Synth {
 
 	destroy(): void {
 		this.stopAll();
-		try {
-			this.keepAlive?.stop();
-		} catch {
-			// already stopped — fine
-		}
-		this.keepAlive = null;
+		this.stopKeepAlive();
 	}
 
 	private fire(voice: Voice, time: number, gainFactor: number): void {
