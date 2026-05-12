@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bpmStepDown, bpmStepUp, MAELZEL_BPMS, snapBpm } from './bpm';
+import { bpmStepDown, bpmStepUp, MAELZEL_BPMS, pickLuckyBpm, snapBpm } from './bpm';
 
 describe('Maelzel BPM scale', () => {
 	it('covers 40 through 208', () => {
@@ -25,5 +25,36 @@ describe('Maelzel BPM scale', () => {
 	it('snaps before stepping when given a non-notch value', () => {
 		expect(bpmStepUp(121)).toBe(126);
 		expect(bpmStepDown(121)).toBe(116);
+	});
+});
+
+describe('pickLuckyBpm', () => {
+	const ALLOWED = MAELZEL_BPMS.filter((n) => n >= 60 && n <= 120);
+
+	it('always returns a Maelzel notch in [60, 120]', () => {
+		for (let i = 0; i < 200; i++) {
+			const v = pickLuckyBpm(Math.random);
+			expect(ALLOWED).toContain(v);
+		}
+	});
+
+	it('uses the rng — different rng outputs map to different bpms', () => {
+		const lowest = pickLuckyBpm(() => 0);
+		const highest = pickLuckyBpm(() => 0.999999);
+		expect(lowest).toBe(60);
+		expect(highest).toBe(120);
+	});
+
+	it('covers the full lucky range across many seeds', () => {
+		const seen = new Set<number>();
+		// A tiny LCG so the test is deterministic across runs.
+		let s = 1;
+		const rng = () => {
+			s = (s * 48271) % 2147483647;
+			return s / 2147483647;
+		};
+		for (let i = 0; i < 500; i++) seen.add(pickLuckyBpm(rng));
+		// Expect to have seen most of the allowed notches.
+		expect(seen.size).toBeGreaterThanOrEqual(ALLOWED.length - 1);
 	});
 });

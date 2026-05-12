@@ -166,7 +166,13 @@
 					<span>Play</span>
 				{/if}
 			</button>
-			<button type="button" class="secondary regenerate" onclick={actions.regenerate}>
+			<button
+				type="button"
+				class="secondary regenerate"
+				onclick={actions.regenerate}
+				aria-label="Regenerate"
+				title="Regenerate"
+			>
 				<svg
 					viewBox="0 0 24 24"
 					width="18"
@@ -183,7 +189,34 @@
 					<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
 					<path d="M3 21v-5h5" />
 				</svg>
-				<span>Regenerate</span>
+				<span>New</span>
+			</button>
+			<button
+				type="button"
+				class="secondary lucky"
+				onclick={actions.feelingLucky}
+				aria-label="I'm feeling lucky — random rhythm, tempo and bars"
+				title="I'm feeling lucky — random rhythm, tempo and bars"
+			>
+				<svg
+					viewBox="0 0 24 24"
+					width="18"
+					height="18"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<rect x="3" y="3" width="18" height="18" rx="3" />
+					<circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none" />
+					<circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none" />
+					<circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" />
+					<circle cx="8" cy="16" r="1.3" fill="currentColor" stroke="none" />
+					<circle cx="16" cy="16" r="1.3" fill="currentColor" stroke="none" />
+				</svg>
+				<span>Lucky</span>
 			</button>
 		</div>
 		<div class="transport-bottom">
@@ -413,18 +446,24 @@
 		display: grid;
 		gap: var(--space-3);
 	}
-	.transport-top,
+	.transport-top {
+		/* Play takes the left half; Regenerate + Lucky split the right half.
+		   Keeps Play visually dominant (it's the action you press most) while
+		   the two regenerate variants sit together under one column. */
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+		gap: var(--space-2);
+		align-items: stretch;
+	}
 	.transport-bottom {
-		/* Even 1:1 split — Play / Regenerate up top, BPM / Bars below.
-		   The 2:1 split was tighter on the right column and the Bars
-		   label + buttons were overflowing on phones. */
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: var(--space-2);
 		align-items: stretch;
 	}
 	.play,
-	.regenerate {
+	.regenerate,
+	.lucky {
 		min-height: 3rem;
 		font-size: 1rem;
 		display: inline-flex;

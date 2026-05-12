@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import { bpmStepDown, bpmStepUp, snapBpm } from '../audio/bpm';
+import { bpmStepDown, bpmStepUp, pickLuckyBpm, snapBpm } from '../audio/bpm';
 import { Player } from '../audio/player';
 import { randomSeed } from '../rng/seeded';
 import type {
@@ -45,6 +45,17 @@ export async function restartIfPlaying(): Promise<void> {
 
 export function regenerate(): void {
 	appState.settings.seed = randomSeed();
+}
+
+/**
+ * Roll a brand new exercise: new seed, random Maelzel BPM in the lucky range
+ * (60–120), and 50/50 between one and two bars. All three writes happen in the
+ * same tick so the playback-restart effect only fires once.
+ */
+export function feelingLucky(): void {
+	appState.settings.seed = randomSeed();
+	appState.settings.bpm = pickLuckyBpm(Math.random);
+	appState.settings.bars = Math.random() < 0.5 ? 1 : 2;
 }
 
 export function stepBpm(direction: 1 | -1): void {

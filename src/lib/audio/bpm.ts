@@ -38,3 +38,18 @@ export function bpmStepDown(value: number): number {
 	const idx = MAELZEL_BPMS.indexOf(snapBpm(value));
 	return MAELZEL_BPMS[Math.max(idx - 1, 0)];
 }
+
+/**
+ * Inclusive lower / upper bounds (in BPM) for the "I'm feeling lucky" tempo
+ * roll. 60–120 covers the slow-practice → groove zone — fast enough to feel
+ * the rhythm, slow enough to read clean sixteenths.
+ */
+export const LUCKY_BPM_MIN = 60;
+export const LUCKY_BPM_MAX = 120;
+
+/** Pick a uniformly-random Maelzel notch in the lucky range using `rng`. */
+export function pickLuckyBpm(rng: () => number): number {
+	const candidates = MAELZEL_BPMS.filter((n) => n >= LUCKY_BPM_MIN && n <= LUCKY_BPM_MAX);
+	const idx = Math.min(candidates.length - 1, Math.floor(rng() * candidates.length));
+	return candidates[idx];
+}

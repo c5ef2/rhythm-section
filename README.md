@@ -186,7 +186,9 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 ### 3.5 Transport / playback
 
 - **Play / Stop** button. The button is a **hard stop** — it doesn't preserve playback position; Play restarts from the top of the cycle.
-- **Regenerate** (new seed) button. Play and Regenerate sit on a single `transport-top` row at every width (CSS grid `1fr 1fr`); BPM stepper + Bars share the row below in the same 1:1 grid (so Bars sits flush under Regenerate).
+- **New** (regenerate, same seed roll) button — labelled "New" so it fits the three-column transport.
+- **Lucky** ("I'm feeling lucky") button — fresh seed *and* a random Maelzel BPM in `[60, 120]` (`pickLuckyBpm`) *and* a random `bars` ∈ {1, 2}. All three writes happen in the same tick, so the `restartIfPlaying` effect fires only once. Useful for breaking out of practice ruts where you've memorised a tempo.
+- Transport top row is a 3-column CSS grid (Play | New | Lucky); BPM stepper + Bars share the row below in a 1:1 grid.
 - **Loop is always on.** No toggle.
 - **Loop restart is anchored to the exact cycle end** (`startTime + bars × secPerBar`), not to the last scheduled event's start time, so tempo never rushes between repetitions.
 - **BPM snapping**: only the classic Maelzel notches 40–208 (40, 42, … 60, 63, 66, 69, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 126, 132, 138, 144, 152, 160, 168, 176, 184, 192, 200, 208). The BPM control is a − / value / + stepper; typed/shared values that land off-notch are snapped on load.
