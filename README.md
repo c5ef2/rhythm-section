@@ -249,7 +249,7 @@ Why not a runtime SoundFont synth: the previous spessasynth-backed implementatio
 
 #### Bluetooth keep-alive
 
-BT audio devices power-down their codec a few tens of milliseconds after the audio stream goes silent, so the next short hit lands during the codec wake-up and is clipped or dropped. `WebAudioSynth` loops a 1-second white-noise buffer through a `GainNode` at ~-72 dB into the destination for the AudioContext's lifetime — broadband activity that codecs see as continuous audio and never sleep on, with no spectral peak for adaptive-EQ / AGC on consumer headphones to lock onto and amplify. Earlier attempts (DC offset → stripped by codec DC blockers; pure 30 Hz sine → AGC on BT headphones boosted it to audible levels) failed for those specific reasons.
+BT audio devices power-down their codec a few tens of milliseconds after the audio stream goes silent, so the next short hit lands during the codec wake-up and is clipped or dropped. `WebAudioSynth` loops a 1-second white-noise buffer through a `GainNode` at ~-78 dB into the destination for the AudioContext's lifetime — broadband activity that codecs see as continuous audio and never sleep on, with no spectral peak for adaptive-EQ / AGC on consumer headphones to lock onto and amplify. The codec wake/sleep gate is broadband-activity-based, not a dB threshold, so we can sit well below the -55/-65 dB silence floor — which is how the gain dropped this low without losing the keep-alive effect. Earlier attempts (DC offset → stripped by codec DC blockers; pure 30 Hz sine → AGC on BT headphones boosted it to audible levels) failed for those specific reasons.
 
 #### Scheduler (`src/lib/audio/scheduler.ts`)
 

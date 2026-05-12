@@ -99,11 +99,15 @@ export class WebAudioSynth implements Synth {
 	 * never sleep; AGC can't single out a frequency to amplify; and
 	 * even when slightly audible it perceptually blends into room
 	 * noise instead of standing out as a tone. Loop a 1-second buffer
-	 * of band-limited noise at ≈-72 dB through a `GainNode` for the
-	 * AudioContext's lifetime.
+	 * of band-limited noise at ≈-78 dB through a `GainNode` for the
+	 * AudioContext's lifetime. The codec wake/sleep gate is a broadband
+	 * activity detector, not a dB threshold, so we can sit well below
+	 * the -55/-65 dB silence floor without putting the codec back to
+	 * sleep — which is what lets us drop the level this far below
+	 * audible without losing the keep-alive effect.
 	 */
 	private startKeepAlive(): void {
-		const KEEPALIVE_GAIN = 0.00025; // ≈ -72 dB
+		const KEEPALIVE_GAIN = 0.000125; // ≈ -78 dB
 		const buffer = createKeepAliveNoiseBuffer(this.ctx);
 		const src = new AudioBufferSourceNode(this.ctx, { buffer, loop: true });
 		const gain = new GainNode(this.ctx, { gain: KEEPALIVE_GAIN });
