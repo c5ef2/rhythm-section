@@ -77,7 +77,81 @@ export function generateRhythm(options: GeneratorOptions): GeneratedRhythm {
 		position += slots;
 	}
 
-	return { events: splitAtBeatBoundaries(events), seed: options.seed };
+	return { events: mergeAdjacentRests(splitAtBeatBoundaries(events)), seed: options.seed };
+}
+
+/**
+ * Collapse runs of consecutive rests that fit inside a single beat into the
+ * largest single rest that spans them — two sixteenth rests become an eighth
+ * rest, eighth + sixteenth becomes a dotted-eighth rest, four sixteenth rests
+ * collapse to a quarter rest, three triplet rests covering a full beat become
+ * a quarter rest. Pure readability: timing is unchanged.
+ */
+export function mergeAdjacentRests(events: RhythmEvent[]): RhythmEvent[] {
+	const out: RhythmEvent[] = [];
+	let posUnits = 0; // 1/12-of-a-beat units
+	let i = 0;
+	while (i < events.length) {
+		if (!events[i].isRest) {
+			out.push(events[i]);
+			posUnits += eventUnits(events[i]);
+			i++;
+			continue;
+		}
+		const startBeat = Math.floor(posUnits / UNITS_PER_BEAT);
+		const runKind = events[i].kind;
+		let j = i;
+		let runUnits = 0;
+		while (j < events.length && events[j].isRest && events[j].kind === runKind) {
+			const u = eventUnits(events[j]);
+			const endBeat = Math.floor((posUnits + runUnits + u - 1) / UNITS_PER_BEAT);
+			if (endBeat !== startBeat) break;
+			runUnits += u;
+			j++;
+		}
+		out.push(...collapseRestRun(events.slice(i, j), runUnits));
+		posUnits += runUnits;
+		i = j;
+	}
+	return out;
+}
+
+function eventUnits(e: RhythmEvent): number {
+	return e.kind === 'triplet' ? TRIPLET_UNITS : e.durationSlots * UNITS_PER_SIXTEENTH;
+}
+
+function collapseRestRun(run: RhythmEvent[], totalUnits: number): RhythmEvent[] {
+	if (run.length <= 1) return run;
+	if (run[0].kind === 'binary') {
+		const slots = totalUnits / UNITS_PER_SIXTEENTH;
+		if (slots === 1 || slots === 2 || slots === 3 || slots === 4) {
+			return [
+				{
+					kind: 'binary',
+					length: LENGTH_BY_SLOTS[slots as 1 | 2 | 3 | 4],
+					durationSlots: slots,
+					isRest: true,
+					tiedToNext: false
+				}
+			];
+		}
+		return run;
+	}
+	// Triplet run: only a full-beat trio (3 triplet-eighth rests) collapses,
+	// and it becomes a single binary quarter rest — the tuplet bracket is
+	// unnecessary when the entire beat is silent.
+	if (run.length === 3 && totalUnits === UNITS_PER_BEAT) {
+		return [
+			{
+				kind: 'binary',
+				length: 'quarter',
+				durationSlots: 4,
+				isRest: true,
+				tiedToNext: false
+			}
+		];
+	}
+	return run;
 }
 
 /**

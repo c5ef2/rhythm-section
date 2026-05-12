@@ -152,6 +152,7 @@ The repo also ships a devcontainer (`.devcontainer/`) with the right Node versio
 - With **ties off**, picks are capped at the current beat's remaining slots, so no event ever crosses a beat boundary.
 - With **ties on**, the generator uses a chain-length cap (see §3.2).
 - Long notes that cross beat boundaries are split into per-beat pieces by `splitAtBeatBoundaries` in **integer 1/12-of-a-beat units** so accumulated triplet positions never drift away from beat boundaries (the original `pos += 4/3` accumulated FP error).
+- **Rest merging.** After generation, `mergeAdjacentRests` collapses runs of consecutive rests within a single beat into the largest single rest that fits (2×16th → 8th, 8th + 16th → dotted-8th, 4×16th → quarter, three triplet rests covering a beat → quarter). Pure readability — total duration is preserved, so audio timing is identical. Never crosses a beat boundary, never mixes binary and triplet rests.
 
 ### 3.2 Tie chain cap
 
@@ -376,6 +377,7 @@ These are guarded by the test suite today; if any regresses, the spec broke:
   - With `allowTies=false`, no event ever crosses a beat boundary and no chain exists.
   - With `allowTies=true`, no chain exceeds 3 events and the length-3 fraction stays well under the 5 % ceiling across many seeds.
   - Emits triplets only in exact groups of 3 per beat.
+  - Consecutive same-beat rests are folded into one larger rest (no two sixteenth rests sit side-by-side within a single beat).
 - **Audio event list** — correct click count per division, correct emphasis tagging, count-in shifts rhythm/highlights without skipping metronome, count-in still clicks when the metronome is disabled, drum hits only once per tied group, highlight event exists for every rhythm event, counted-beats gating works for sub-divisions.
 - **Scheduler** — events dispatch in time order, `stop()` halts dispatch and clears the highlight, loop continues past `cycleEndTime`, `rhythmAudio=false` still drives `onHighlight`.
 - **Notation layout** — `splitIntoBars` distributes events across bar boundaries, `computeStaveWidths` fits / scales rows under both stacked and side-by-side layouts, `isDotted` only matches dotted-eighth.

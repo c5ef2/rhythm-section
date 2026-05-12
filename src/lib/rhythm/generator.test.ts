@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { generateRhythm } from './generator';
+import { generateRhythm, mergeAdjacentRests } from './generator';
 import { BINARY_SLOTS } from './types';
 import type { NoteLength, RhythmEvent } from './types';
+
+function bin(length: NoteLength, opts: Partial<RhythmEvent> = {}): RhythmEvent {
+	const slots = length === 'eighth-triplet' ? 1 : BINARY_SLOTS[length];
+	return {
+		kind: length === 'eighth-triplet' ? 'triplet' : 'binary',
+		length,
+		durationSlots: slots,
+		isRest: false,
+		tiedToNext: false,
+		...opts
+	};
+}
 
 function binarySlots(events: RhythmEvent[]): number {
 	return events.filter((e) => e.kind === 'binary').reduce((s, e) => s + e.durationSlots, 0);
@@ -362,6 +374,183 @@ describe('generateRhythm (ties)', () => {
 					expect(events[i + 1].isRest).toBe(false);
 				}
 			});
+		}
+	});
+});
+
+describe('mergeAdjacentRests', () => {
+	it('merges two sixteenth rests into one eighth rest within a beat', () => {
+		const input: RhythmEvent[] = [
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('eighth')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([bin('eighth', { isRest: true }), bin('eighth')]);
+	});
+
+	it('merges an eighth rest + sixteenth rest into a dotted-eighth rest', () => {
+		const input: RhythmEvent[] = [
+			bin('eighth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([bin('dotted-eighth', { isRest: true }), bin('sixteenth')]);
+	});
+
+	it('merges a sixteenth rest + eighth rest into a dotted-eighth rest', () => {
+		const input: RhythmEvent[] = [
+			bin('sixteenth', { isRest: true }),
+			bin('eighth', { isRest: true }),
+			bin('sixteenth')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([bin('dotted-eighth', { isRest: true }), bin('sixteenth')]);
+	});
+
+	it('merges four sixteenth rests within a beat into one quarter rest', () => {
+		const input: RhythmEvent[] = [
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true })
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([bin('quarter', { isRest: true })]);
+	});
+
+	it('does not merge rests across a beat boundary', () => {
+		// eighth note | eighth rest (end of beat 1) | eighth rest (start of beat 2) | eighth note
+		const input: RhythmEvent[] = [
+			bin('eighth'),
+			bin('eighth', { isRest: true }),
+			bin('eighth', { isRest: true }),
+			bin('eighth')
+		];
+		const out = mergeAdjacentRests(input);
+		// Must NOT merge into a single quarter rest — that would straddle beats 1 & 2.
+		expect(out).toEqual(input);
+	});
+
+	it('merges within one beat even when notes surround the rests', () => {
+		// beat 1: quarter | beat 2: 16th-rest, 16th-rest, eighth | beat 3: quarter
+		const input: RhythmEvent[] = [
+			bin('quarter'),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('eighth'),
+			bin('quarter')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([
+			bin('quarter'),
+			bin('eighth', { isRest: true }),
+			bin('eighth'),
+			bin('quarter')
+		]);
+	});
+
+	it('merges three triplet rests covering a full beat into a single quarter rest', () => {
+		const input: RhythmEvent[] = [
+			bin('eighth-triplet', { isRest: true }),
+			bin('eighth-triplet', { isRest: true }),
+			bin('eighth-triplet', { isRest: true }),
+			bin('quarter')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([bin('quarter', { isRest: true }), bin('quarter')]);
+	});
+
+	it('leaves a partial triplet rest run alone', () => {
+		const input: RhythmEvent[] = [
+			bin('eighth-triplet', { isRest: true }),
+			bin('eighth-triplet', { isRest: true }),
+			bin('eighth-triplet') // not a rest
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual(input);
+	});
+
+	it('does not merge across binary/triplet kinds', () => {
+		// beat 1 triplets all rest → merge to a quarter rest;
+		// beat 2 two sixteenth rests at the start → merge to an eighth rest;
+		// the two runs do NOT merge with each other (different kinds + different beats).
+		const input: RhythmEvent[] = [
+			bin('eighth-triplet', { isRest: true }),
+			bin('eighth-triplet', { isRest: true }),
+			bin('eighth-triplet', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth'),
+			bin('sixteenth')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual([
+			bin('quarter', { isRest: true }),
+			bin('eighth', { isRest: true }),
+			bin('sixteenth'),
+			bin('sixteenth')
+		]);
+	});
+
+	it('preserves total rest duration — units in == units out', () => {
+		const UNITS: Record<NoteLength, number> = {
+			quarter: 12,
+			'dotted-eighth': 9,
+			eighth: 6,
+			'eighth-triplet': 4,
+			sixteenth: 3
+		};
+		const input: RhythmEvent[] = [
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth', { isRest: true }),
+			bin('eighth')
+		];
+		const totalBefore = input.reduce((s, e) => s + UNITS[e.length], 0);
+		const out = mergeAdjacentRests(input);
+		const totalAfter = out.reduce((s, e) => s + UNITS[e.length], 0);
+		expect(totalAfter).toBe(totalBefore);
+	});
+
+	it('does not merge a rest with the following note', () => {
+		const input: RhythmEvent[] = [
+			bin('sixteenth', { isRest: true }),
+			bin('sixteenth')
+		];
+		const out = mergeAdjacentRests(input);
+		expect(out).toEqual(input);
+	});
+});
+
+describe('generateRhythm post-processing — rest merging', () => {
+	it('never emits two consecutive same-beat sixteenth rests (binary only)', () => {
+		for (let seed = 0; seed < 200; seed++) {
+			const { events } = generateRhythm({
+				bars: 2,
+				allowedLengths: ['quarter', 'eighth', 'sixteenth'],
+				allowRests: true,
+				allowTies: false,
+				seed
+			});
+			let pos = 0; // sixteenth slots
+			for (let i = 0; i < events.length - 1; i++) {
+				const e = events[i];
+				const n = events[i + 1];
+				if (
+					e.isRest &&
+					n.isRest &&
+					e.length === 'sixteenth' &&
+					n.length === 'sixteenth'
+				) {
+					const beatStart = Math.floor(pos / 4);
+					const beatEnd = Math.floor((pos + e.durationSlots + n.durationSlots - 1) / 4);
+					// If both fit in the same beat, the merge should have eliminated this pair.
+					expect(beatEnd).not.toBe(beatStart);
+				}
+				pos += e.durationSlots;
+			}
 		}
 	});
 });
