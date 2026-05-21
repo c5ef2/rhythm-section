@@ -52,6 +52,16 @@ export interface SchedulerConfig extends Omit<BuildEventListInput, 'startTime'> 
 	onHighlight: HighlightListener;
 	loop?: boolean;
 	onComplete?: () => void;
+	/**
+	 * Floor for the latency we plan against, in seconds. The Player sets
+	 * this to a BT-typical value (~0.25 s) when it believes the sink is
+	 * Bluetooth, which lets us schedule with enough lead time even when
+	 * `ctx.outputLatency` is stuck at the wired value the context had
+	 * when it was created (most browsers freeze it). Without this, every
+	 * event scheduled in BT mode arrives too late and the BT codec drops
+	 * or clips it — keep-alive on its own doesn't help.
+	 */
+	minLatencyHint?: number;
 }
 
 interface HighlightMark {
@@ -69,6 +79,7 @@ export class Scheduler {
 	private rafHandle: number | null = null;
 	private lastActive: number | null = null;
 	private running = false;
+	private minLatencyHint: number;
 	/**
 	 * Audio-context time at which the CURRENT cycle ends (= startTime of the
 	 * next cycle when looping). Computed once per cycle so seamless loop
@@ -80,6 +91,16 @@ export class Scheduler {
 	constructor(config: SchedulerConfig) {
 		this.ctx = config.ctx;
 		this.cfg = config;
+		this.minLatencyHint = config.minLatencyHint ?? 0;
+	}
+
+	/**
+	 * Update the latency floor mid-cycle. Used when the user (or the
+	 * Player's devicechange hook) flips BT mode on/off while audio is
+	 * already playing; the next `tick()` will use the new value.
+	 */
+	setMinLatencyHint(seconds: number): void {
+		this.minLatencyHint = Math.max(0, seconds);
 	}
 
 	start(): void {
@@ -94,9 +115,12 @@ export class Scheduler {
 
 	private outputLatency(): number {
 		// Browsers that don't expose outputLatency report 0 / undefined; treat
-		// those as "low latency" — typical for built-in speakers anyway.
+		// those as "low latency" — typical for built-in speakers anyway. The
+		// minLatencyHint floor lets the Player force BT-sized planning when
+		// it knows better than ctx.outputLatency (which is sticky).
 		const reported = (this.ctx as { outputLatency?: number }).outputLatency;
-		return typeof reported === 'number' && reported > 0 ? reported : 0;
+		const reportedNum = typeof reported === 'number' && reported > 0 ? reported : 0;
+		return Math.max(reportedNum, this.minLatencyHint);
 	}
 
 	private startPreroll(): number {

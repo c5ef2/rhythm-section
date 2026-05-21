@@ -97,6 +97,20 @@ export class WebAudioSynth implements Synth {
 	private keepAlive: AudioScheduledSourceNode | null = null;
 	private onKeepAliveChange?: (active: boolean) => void;
 	/**
+	 * User's explicit BT-mode preference for this session:
+	 *  - `null` → no manual override; `refreshKeepAlive()` uses auto-detect
+	 *    (`isBluetoothLikely(outputLatency)`) plus any `forcedOn` from
+	 *    `devicechange`.
+	 *  - `true`  → force the keep-alive on regardless of auto-detect.
+	 *  - `false` → force the keep-alive off regardless.
+	 *
+	 * Set by the user clicking the BT toggle in the header. Auto-detect is
+	 * unreliable on most browsers (sticky `outputLatency`, `devicechange`
+	 * doesn't fire for OS-level BT routing), so this manual override is
+	 * the escape hatch that *always* works.
+	 */
+	private userOverride: boolean | null = null;
+	/**
 	 * Once a `devicechange` has fired during this session we stop trusting
 	 * `outputLatency` to gate the keep-alive: most browsers cache the
 	 * latency from the device that was active when the AudioContext was
@@ -129,6 +143,17 @@ export class WebAudioSynth implements Synth {
 	}
 
 	/**
+	 * Apply the user's manual BT-mode preference. `null` clears the
+	 * override and returns the synth to auto-detect; `true` / `false` pin
+	 * the keep-alive on / off for the rest of the session (or until the
+	 * user clicks the toggle again).
+	 */
+	setKeepAliveOverride(value: boolean | null): void {
+		this.userOverride = value;
+		this.refreshKeepAlive();
+	}
+
+	/**
 	 * Force the keep-alive on for the rest of the session, regardless of
 	 * what `outputLatency` reports. Called from the Player when the
 	 * browser fires `devicechange` — outputLatency is sticky on most
@@ -142,22 +167,27 @@ export class WebAudioSynth implements Synth {
 
 	/**
 	 * Re-check the output device and toggle the BT keep-alive accordingly.
-	 * Called once at construction; the Player also calls it on every
-	 * `run()` so a device change (e.g., user pairs BT mid-session) starts
-	 * the keep-alive on the next Play press without forcing a reload.
+	 * Precedence (highest first):
+	 *   1. User's manual override, if set.
+	 *   2. `forcedOn` (devicechange fired this session).
+	 *   3. Auto-detect via `isBluetoothLikely(outputLatency)`.
+	 *
+	 * Called once at construction, once per `Player.run()`, and whenever
+	 * the user toggles the override — so a device change or a manual
+	 * click takes effect immediately without forcing a reload.
 	 *
 	 * Once `forcedOn` has been set (devicechange has fired) we never turn
-	 * the keep-alive back off — outputLatency would lie to us and silence
-	 * BT clicks. The cost is faint -78 dB noise on wired output for the
-	 * rest of the session if the user actually went BT → wired; the
-	 * benefit is BT clicks stay audible without a page reload.
+	 * the keep-alive back off via auto-detect — outputLatency would lie
+	 * to us and silence BT clicks. The user can still turn it off
+	 * explicitly by clicking the toggle.
 	 */
 	refreshKeepAlive(): void {
-		if (this.forcedOn) {
-			if (!this.keepAlive) this.startKeepAlive();
-			return;
-		}
-		const shouldRun = isBluetoothLikely(this.ctx.outputLatency);
+		const shouldRun =
+			this.userOverride !== null
+				? this.userOverride
+				: this.forcedOn
+					? true
+					: isBluetoothLikely(this.ctx.outputLatency);
 		if (shouldRun && !this.keepAlive) this.startKeepAlive();
 		else if (!shouldRun && this.keepAlive) this.stopKeepAlive();
 	}

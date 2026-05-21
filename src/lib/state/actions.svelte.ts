@@ -157,6 +157,18 @@ export function setHihatSubdivision(s: HihatSubdivision): void {
 	appState.settings.hihatSubdivision = s;
 }
 
+/**
+ * Flip the manual BT-mode override. Auto-detection (outputLatency,
+ * devicechange) misses BT pairings on most browser/OS combinations, so
+ * this toggle is the user's reliable escape hatch when the icon doesn't
+ * match what they're actually hearing. Engaging BT mode starts the
+ * keep-alive noise loop and widens the scheduler's look-ahead window in
+ * one shot — both halves of the BT fix flip together.
+ */
+export function toggleBtKeepAlive(): void {
+	player?.setBtMode(!appState.btKeepAliveActive);
+}
+
 export function currentShareUrl(): string {
 	const url = new URL(window.location.href);
 	url.hash = 's=' + encodeShare($state.snapshot(appState.settings));

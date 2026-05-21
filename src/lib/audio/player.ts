@@ -46,12 +46,29 @@ export interface PlayerCallbacks {
  * total) and quick, but it IS async, so the first Play press waits on
  * one fetch+decode round; subsequent presses are instant.
  */
+/**
+ * Latency floor (seconds) we plan against when BT mode is on. BT A2DP
+ * sinks cluster at 0.10–0.30 s; the scheduler multiplies by the safety
+ * factor, so 0.25 s gives a 0.5 s schedule-ahead window — plenty for
+ * even the slowest BT codec without making restart-on-regenerate feel
+ * sluggish on wired output where the user happens to leave BT mode on.
+ */
+const BT_ASSUMED_LATENCY_SEC = 0.25;
+
 export class Player {
 	private ctx: AudioContext | null = null;
 	private synth: Synth | null = null;
 	private synthPromise: Promise<Synth> | null = null;
 	private scheduler: Scheduler | null = null;
 	private wakeLock = new WakeLock();
+	/**
+	 * User's manual BT-mode preference for this session. `null` = trust
+	 * auto-detection; `true` / `false` = pin keep-alive on / off. Held in
+	 * the Player (not the synth) because the user can toggle BT mode
+	 * before the synth has been constructed (i.e., before the first Play
+	 * press), and we replay the preference into the synth at construction.
+	 */
+	private userOverride: boolean | null = null;
 
 	constructor(private readonly callbacks: PlayerCallbacks) {
 		// Listen for OS-level audio device changes (pairing / unpairing BT
@@ -61,7 +78,11 @@ export class Player {
 		// without this hook a user who plays through the speaker and then
 		// pairs BT headphones gets clicks dropped indefinitely — even Stop
 		// + Play won't recover, because refreshKeepAlive() reads the same
-		// stale latency. devicechange is the most reliable cue we have.
+		// stale latency. devicechange is the most reliable automatic cue
+		// we have; the manual toggle (setBtMode) is the always-works
+		// fallback for browsers / OSes where devicechange never fires for
+		// audio output routing changes (Linux/PulseAudio, some Safari
+		// configurations).
 		if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
 			navigator.mediaDevices.addEventListener('devicechange', () => {
 				this.handleDeviceChange();
@@ -72,6 +93,22 @@ export class Player {
 	private handleDeviceChange(): void {
 		const synth = this.synth;
 		if (synth instanceof WebAudioSynth) synth.forceKeepAliveOn();
+		// Bump the live scheduler's lead time too — keep-alive alone
+		// doesn't help if events are still being scheduled with the old
+		// (wired-sized) window and the BT codec drops them on arrival.
+		this.scheduler?.setMinLatencyHint(BT_ASSUMED_LATENCY_SEC);
+	}
+
+	/**
+	 * User-facing BT-mode toggle. Always-works escape hatch when auto-
+	 * detection (`outputLatency` / `devicechange`) misses the actual
+	 * routing. Applies to the synth's keep-alive and the scheduler's
+	 * latency floor, both immediately if the player is running.
+	 */
+	setBtMode(on: boolean): void {
+		this.userOverride = on;
+		if (this.synth instanceof WebAudioSynth) this.synth.setKeepAliveOverride(on);
+		this.scheduler?.setMinLatencyHint(on ? BT_ASSUMED_LATENCY_SEC : 0);
 	}
 
 	private ensureContext(): AudioContext {
@@ -89,6 +126,9 @@ export class Player {
 				const synth = new WebAudioSynth(ctx, buffers);
 				const cb = this.callbacks.onKeepAliveChange;
 				if (cb) synth.setKeepAliveListener(cb);
+				// User may have toggled BT mode before this first Play
+				// press; replay their preference now that the synth exists.
+				if (this.userOverride !== null) synth.setKeepAliveOverride(this.userOverride);
 				this.synth = synth;
 				return synth;
 			});
@@ -117,6 +157,11 @@ export class Player {
 		// risk of stale audio bleeding under it.
 		this.scheduler?.stop();
 		synth.stopAll();
+		// If we believe BT is the sink (keep-alive on, regardless of why),
+		// plan the scheduler's look-ahead against BT-typical latency. The
+		// `outputLatency` reading is unreliable here: stale on most
+		// browsers after a mid-session device change, low-balled on others.
+		const btMode = synth instanceof WebAudioSynth && synth.keepAliveActive;
 		this.scheduler = new Scheduler({
 			ctx,
 			synth,
@@ -131,6 +176,7 @@ export class Player {
 			hihatSubdivision: inputs.hihatSubdivision,
 			countInBars: inputs.countInBars,
 			loop: inputs.loop,
+			minLatencyHint: btMode ? BT_ASSUMED_LATENCY_SEC : 0,
 			onHighlight: (i) => this.callbacks.onActiveNote(i),
 			onComplete: () => {
 				this.wakeLock.release();

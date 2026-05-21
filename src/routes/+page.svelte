@@ -105,28 +105,30 @@
 					Practice reading rhythms with a generated exercise and a metronome.
 				</p>
 			</div>
-			{#if appState.btKeepAliveActive}
-				<span
-					class="bt-indicator"
-					role="img"
-					aria-label="Bluetooth keep-alive active"
-					title="Bluetooth keep-alive active — silent noise loop is preventing the BT codec from sleeping between hits"
+			<button
+				type="button"
+				class="bt-toggle"
+				aria-pressed={appState.btKeepAliveActive}
+				aria-label="Bluetooth mode"
+				title={appState.btKeepAliveActive
+					? 'Bluetooth mode ON — keep-alive noise loop is running and the scheduler is using BT-sized lead time. Click to turn off.'
+					: 'Bluetooth mode OFF. Click to force it on if BT clicks sound clipped or dropped.'}
+				onclick={actions.toggleBtKeepAlive}
+			>
+				<svg
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
 				>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"
-					>
-						<path d="M7 7l10 10-5 5V2l5 5L7 17" />
-					</svg>
-				</span>
-			{/if}
+					<path d="M7 7l10 10-5 5V2l5 5L7 17" />
+				</svg>
+			</button>
 			{#if showShareButton}
 				<button
 					type="button"
@@ -454,16 +456,27 @@
 		justify-content: center;
 		border-radius: var(--radius-pill);
 	}
-	.bt-indicator {
+	.bt-toggle {
 		flex: 0 0 auto;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.75rem;
-		height: 1.75rem;
+		width: 2.25rem;
+		height: 2.25rem;
+		min-height: 0;
+		padding: 0;
 		border-radius: var(--radius-pill);
+		background: transparent;
+		color: var(--text-muted);
+		opacity: 0.55;
+	}
+	.bt-toggle:hover {
+		opacity: 1;
+	}
+	.bt-toggle[aria-pressed='true'] {
 		background: color-mix(in oklab, var(--brand) 18%, transparent);
 		color: var(--brand);
+		opacity: 1;
 	}
 
 	.card {
