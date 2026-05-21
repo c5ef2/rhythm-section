@@ -96,6 +96,15 @@ export class WebAudioSynth implements Synth {
 	private active = new Set<AudioBufferSourceNode>();
 	private keepAlive: AudioScheduledSourceNode | null = null;
 	private onKeepAliveChange?: (active: boolean) => void;
+	/**
+	 * Once a `devicechange` has fired during this session we stop trusting
+	 * `outputLatency` to gate the keep-alive: most browsers cache the
+	 * latency from the device that was active when the AudioContext was
+	 * created and don't refresh it when the OS routes audio elsewhere.
+	 * After any device-list change we assume BT might now be the sink and
+	 * keep the noise loop running for the rest of the session.
+	 */
+	private forcedOn = false;
 
 	constructor(
 		private readonly ctx: AudioContext,
@@ -120,12 +129,34 @@ export class WebAudioSynth implements Synth {
 	}
 
 	/**
+	 * Force the keep-alive on for the rest of the session, regardless of
+	 * what `outputLatency` reports. Called from the Player when the
+	 * browser fires `devicechange` — outputLatency is sticky on most
+	 * implementations and won't update to reflect newly paired BT, so a
+	 * device change is the most reliable cue that BT may now be routed.
+	 */
+	forceKeepAliveOn(): void {
+		this.forcedOn = true;
+		if (!this.keepAlive) this.startKeepAlive();
+	}
+
+	/**
 	 * Re-check the output device and toggle the BT keep-alive accordingly.
 	 * Called once at construction; the Player also calls it on every
 	 * `run()` so a device change (e.g., user pairs BT mid-session) starts
 	 * the keep-alive on the next Play press without forcing a reload.
+	 *
+	 * Once `forcedOn` has been set (devicechange has fired) we never turn
+	 * the keep-alive back off — outputLatency would lie to us and silence
+	 * BT clicks. The cost is faint -78 dB noise on wired output for the
+	 * rest of the session if the user actually went BT → wired; the
+	 * benefit is BT clicks stay audible without a page reload.
 	 */
 	refreshKeepAlive(): void {
+		if (this.forcedOn) {
+			if (!this.keepAlive) this.startKeepAlive();
+			return;
+		}
 		const shouldRun = isBluetoothLikely(this.ctx.outputLatency);
 		if (shouldRun && !this.keepAlive) this.startKeepAlive();
 		else if (!shouldRun && this.keepAlive) this.stopKeepAlive();

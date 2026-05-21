@@ -53,7 +53,26 @@ export class Player {
 	private scheduler: Scheduler | null = null;
 	private wakeLock = new WakeLock();
 
-	constructor(private readonly callbacks: PlayerCallbacks) {}
+	constructor(private readonly callbacks: PlayerCallbacks) {
+		// Listen for OS-level audio device changes (pairing / unpairing BT
+		// headphones, plugging USB headphones, switching system default
+		// output, …). Most browsers leave `AudioContext.outputLatency`
+		// frozen at the value it had when the context was created, so
+		// without this hook a user who plays through the speaker and then
+		// pairs BT headphones gets clicks dropped indefinitely — even Stop
+		// + Play won't recover, because refreshKeepAlive() reads the same
+		// stale latency. devicechange is the most reliable cue we have.
+		if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
+			navigator.mediaDevices.addEventListener('devicechange', () => {
+				this.handleDeviceChange();
+			});
+		}
+	}
+
+	private handleDeviceChange(): void {
+		const synth = this.synth;
+		if (synth instanceof WebAudioSynth) synth.forceKeepAliveOn();
+	}
 
 	private ensureContext(): AudioContext {
 		if (!this.ctx) {
