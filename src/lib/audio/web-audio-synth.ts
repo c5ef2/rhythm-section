@@ -62,34 +62,61 @@ export async function loadVoiceBuffers(ctx: AudioContext): Promise<Record<Voice,
 /**
  * BT vs. wired/built-in detection threshold (seconds of output latency).
  * Built-in speakers and wired headphones typically report 0.005–0.02 s;
- * Bluetooth headsets land in the 0.10–0.30 s range. 0.05 s sits well
- * between the two clusters with room for outliers either way.
+ * Bluetooth headsets land in the 0.10–0.30 s range. 0.03 s sits between
+ * the two clusters with margin for both built-in outliers and newer
+ * low-latency BT codecs (LE Audio reports ~0.04 s in some cases).
  */
-export const BT_LATENCY_THRESHOLD_SEC = 0.05;
+export const BT_LATENCY_THRESHOLD_SEC = 0.03;
 
 /**
- * True when the AudioContext's output looks like a Bluetooth sink — sole
- * signal is its reported `outputLatency`. Returning `false` for unknown /
- * zero latency means we won't run the keep-alive noise on outputs we can't
- * measure; the cost is a single clipped click on the first BT hit before
- * the user can re-pair, which is much less annoying than steady noise on
- * outputs that don't need it.
+ * True when the AudioContext's output looks like a Bluetooth sink. Sole
+ * signal is `AudioContext.outputLatency`, which not every browser exposes:
+ *
+ *  - Chrome / Edge: positive float in seconds, reliable once the context
+ *    is running. → use it directly against the threshold.
+ *  - Safari (iOS & desktop): the property exists but often reports 0
+ *    until audio actually flows, and may stay at 0 even with BT routed.
+ *  - Firefox: supported, but on some platforms returns 0 for built-in.
+ *
+ * To avoid silently disabling the keep-alive on a paired BT device just
+ * because the browser hasn't populated outputLatency yet, we default to
+ * `true` whenever the value is missing / zero / non-positive. The cost
+ * is faint -78 dB noise on wired output for browsers that don't expose
+ * outputLatency at all; the benefit is BT clicks never go silent. Only a
+ * *known small positive* latency (clearly built-in / wired) turns the
+ * keep-alive off.
  */
 export function isBluetoothLikely(outputLatencySec: number | undefined | null): boolean {
-	if (typeof outputLatencySec !== 'number') return false;
-	if (!Number.isFinite(outputLatencySec) || outputLatencySec <= 0) return false;
+	if (typeof outputLatencySec !== 'number') return true;
+	if (!Number.isFinite(outputLatencySec) || outputLatencySec <= 0) return true;
 	return outputLatencySec >= BT_LATENCY_THRESHOLD_SEC;
 }
 
 export class WebAudioSynth implements Synth {
 	private active = new Set<AudioBufferSourceNode>();
 	private keepAlive: AudioScheduledSourceNode | null = null;
+	private onKeepAliveChange?: (active: boolean) => void;
 
 	constructor(
 		private readonly ctx: AudioContext,
 		private readonly buffers: Record<Voice, AudioBuffer>
 	) {
 		this.refreshKeepAlive();
+	}
+
+	/** True when the BT keep-alive noise loop is currently running. */
+	get keepAliveActive(): boolean {
+		return this.keepAlive !== null;
+	}
+
+	/**
+	 * Subscribe to keep-alive state changes. The listener fires on every
+	 * transition (and once immediately with the current state) so the UI
+	 * can show / hide the BT indicator without polling.
+	 */
+	setKeepAliveListener(fn: (active: boolean) => void): void {
+		this.onKeepAliveChange = fn;
+		fn(this.keepAliveActive);
 	}
 
 	/**
@@ -148,6 +175,7 @@ export class WebAudioSynth implements Synth {
 		src.connect(gain).connect(this.ctx.destination);
 		src.start();
 		this.keepAlive = src;
+		this.onKeepAliveChange?.(true);
 	}
 
 	private stopKeepAlive(): void {
@@ -157,6 +185,7 @@ export class WebAudioSynth implements Synth {
 			// already stopped — fine
 		}
 		this.keepAlive = null;
+		this.onKeepAliveChange?.(false);
 	}
 
 	playClick(time: number, emphasis: 'downbeat' | 'onbeat' | 'subbeat'): void {

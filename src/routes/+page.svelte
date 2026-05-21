@@ -105,6 +105,28 @@
 					Practice reading rhythms with a generated exercise and a metronome.
 				</p>
 			</div>
+			{#if appState.btKeepAliveActive}
+				<span
+					class="bt-indicator"
+					role="img"
+					aria-label="Bluetooth keep-alive active"
+					title="Bluetooth keep-alive active — silent noise loop is preventing the BT codec from sleeping between hits"
+				>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M7 7l10 10-5 5V2l5 5L7 17" />
+					</svg>
+				</span>
+			{/if}
 			{#if showShareButton}
 				<button
 					type="button"
@@ -431,6 +453,17 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: var(--radius-pill);
+	}
+	.bt-indicator {
+		flex: 0 0 auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--brand) 18%, transparent);
+		color: var(--brand);
 	}
 
 	.card {

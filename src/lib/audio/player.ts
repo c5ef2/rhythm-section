@@ -27,6 +27,12 @@ export interface PlayInputs {
 export interface PlayerCallbacks {
 	onActiveNote(index: number | null): void;
 	onStopped(): void;
+	/**
+	 * Fires when the BT keep-alive noise loop starts or stops. Used by the UI
+	 * to show / hide a BT indicator so the user can verify whether the
+	 * keep-alive is actually engaged on their current output device.
+	 */
+	onKeepAliveChange?(active: boolean): void;
 }
 
 /**
@@ -62,6 +68,8 @@ export class Player {
 		if (!this.synthPromise) {
 			this.synthPromise = loadVoiceBuffers(ctx).then((buffers) => {
 				const synth = new WebAudioSynth(ctx, buffers);
+				const cb = this.callbacks.onKeepAliveChange;
+				if (cb) synth.setKeepAliveListener(cb);
 				this.synth = synth;
 				return synth;
 			});

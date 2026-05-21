@@ -18,7 +18,8 @@ const player = browser
 			onStopped: () => {
 				appState.isPlaying = false;
 				appState.activeIndex = null;
-			}
+			},
+			onKeepAliveChange: (active) => (appState.btKeepAliveActive = active)
 		})
 	: null;
 

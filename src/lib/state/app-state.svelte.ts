@@ -20,6 +20,14 @@ class AppState {
 	activeIndex: number | null = $state(null);
 
 	/**
+	 * Whether the BT keep-alive noise loop is currently running. Surfaced in
+	 * the header so the user can verify that the workaround is actually
+	 * engaged on their output device — silence here while on BT is the
+	 * single observable signal that detection misfired.
+	 */
+	btKeepAliveActive: boolean = $state(false);
+
+	/**
 	 * Deterministic regeneration: `rhythm` is derived purely from settings, so
 	 * any setting change (including seed) instantly produces the new rhythm.
 	 */
